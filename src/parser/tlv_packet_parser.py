@@ -74,17 +74,14 @@ def _parse_detected_points_tlv(
     offset = 8
     for _ in range(num_det_obj):
         x, y, z, v = struct.unpack_from('<ffff', data, tlv_start + offset)
+        xy_range = math.hypot(x, y)
         comp_detected_range = math.sqrt((x * x) + (y * y) + (z * z))
+        detected_azimuth = math.degrees(math.atan2(x, y))
 
-        if y == 0:
-            detected_azimuth = 90.0 if x >= 0 else -90.0
-        else:
-            detected_azimuth = math.degrees(math.atan(x / y))
-
-        if x == 0 and y == 0:
+        if xy_range == 0.0:
             detected_elev_angle = 90.0 if z >= 0 else -90.0
         else:
-            detected_elev_angle = math.degrees(math.atan(z / math.sqrt((x * x) + (y * y))))
+            detected_elev_angle = math.degrees(math.atan2(z, xy_range))
 
         detected_x_array.append(x)
         detected_y_array.append(y)
@@ -197,26 +194,32 @@ def parser_one_mmw_demo_output_packet(data: bytes, read_num_bytes: int, debug: b
     tlv_start = header_start_index + HEADER_NUM_BYTES
     for _ in range(num_tlv):
         if tlv_start + 8 > read_num_bytes:
+            result = TC_FAIL
             break
 
         tlv_type = get_uint32(data[tlv_start + 0:tlv_start + 4])
         tlv_len = get_uint32(data[tlv_start + 4:tlv_start + 8])
 
         if tlv_len <= 0 or (tlv_start + 8 + tlv_len) > read_num_bytes:
+            result = TC_FAIL
             break
 
-        if tlv_type == 1:
-            (
-                detected_x_array,
-                detected_y_array,
-                detected_z_array,
-                detected_v_array,
-                detected_range_array,
-                detected_azimuth_array,
-                detected_elev_angle_array,
-            ) = _parse_detected_points_tlv(data, tlv_start, num_det_obj)
-        elif tlv_type == 7:
-            detected_snr_array, detected_noise_array = _parse_snr_noise_tlv(data, tlv_start, num_det_obj)
+        try:
+            if tlv_type == 1:
+                (
+                    detected_x_array,
+                    detected_y_array,
+                    detected_z_array,
+                    detected_v_array,
+                    detected_range_array,
+                    detected_azimuth_array,
+                    detected_elev_angle_array,
+                ) = _parse_detected_points_tlv(data, tlv_start, num_det_obj)
+            elif tlv_type == 7:
+                detected_snr_array, detected_noise_array = _parse_snr_noise_tlv(data, tlv_start, num_det_obj)
+        except (IndexError, struct.error):
+            result = TC_FAIL
+            break
 
         tlv_start += 8 + tlv_len
 
