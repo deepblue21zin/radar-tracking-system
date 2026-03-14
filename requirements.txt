@@ -1,0 +1,7 @@
+# Portable runtime dependencies for the radar tracking pipeline.
+# Recommended Python version: 3.10 or 3.11
+
+pyserial==3.5
+numpy==1.26.4
+scikit-learn==1.5.2
+filterpy==1.4.5
