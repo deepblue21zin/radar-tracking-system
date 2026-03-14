@@ -151,5 +151,12 @@ frame=123 raw=87 filtered=51 clusters=3 tracks=2
 - 아키텍처: `docs/architecture.md`
 - 분석 명세: `docs/architecture_analysis_spec.md`
 - 캡스톤 구현 명세: `docs/capstone_pipeline_spec.md`
+- 팀 요구사항/3개월 로드맵: `docs/capstone_team_req_roadmap.md`
+- TLV 개발 가이드: `docs/TLV.md`
+- TLV 스터디 노트: `docs/study/study_TLV.md`
+- 개발 진척 보드: `docs/elevation/README.md`
+- DBSCAN 개발 가이드: `docs/DBSCAN.md`
+- Kalman 개발 가이드: `docs/Kalman.md`
+- 런타임 로깅/ROI 계획: `docs/runtime_logging_roi_plan.md`
 - 성능 로그: `docs/performance_log.md`
 - FMEA: `docs/FMEA.md`
