@@ -129,6 +129,7 @@ def parser_one_mmw_demo_output_packet(data: bytes, read_num_bytes: int, debug: b
     detected_elev_angle_array: List[float] = []
     detected_snr_array: List[int] = []
     detected_noise_array: List[int] = []
+    saw_points_tlv = False
 
     result = TC_PASS
 
@@ -215,6 +216,7 @@ def parser_one_mmw_demo_output_packet(data: bytes, read_num_bytes: int, debug: b
                     detected_azimuth_array,
                     detected_elev_angle_array,
                 ) = _parse_detected_points_tlv(data, tlv_start, num_det_obj)
+                saw_points_tlv = True
             elif tlv_type == 7:
                 detected_snr_array, detected_noise_array = _parse_snr_noise_tlv(data, tlv_start, num_det_obj)
         except (IndexError, struct.error):
@@ -222,6 +224,9 @@ def parser_one_mmw_demo_output_packet(data: bytes, read_num_bytes: int, debug: b
             break
 
         tlv_start += 8 + tlv_len
+
+    if result == TC_PASS and num_det_obj > 0 and not saw_points_tlv:
+        result = TC_FAIL
 
     if len(detected_snr_array) < num_det_obj:
         detected_snr_array += [0] * (num_det_obj - len(detected_snr_array))
