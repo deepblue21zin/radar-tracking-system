@@ -233,7 +233,7 @@ header에서 중요한 값은 아래다.
 
 #### 3. 파서 실패 원인 분류가 아직 약하다
 - 어떤 이유로 fail 되었는지 세분화된 통계가 없다
-- success/fail rate를 파일로 남기는 기능이 아직 없다
+- success/fail rate를 parser 전용 지표로 더 분리할 필요가 있다
 
 #### 4. 성능 계측이 parser 전용으로 충분히 분리돼 있지 않다
 - 전체 FPS는 보지만 parser 단독 latency 로그는 아직 약하다
@@ -276,6 +276,33 @@ python src/parser/tlv_parse_runner.py --help
 
 참고:
 현재 프로젝트 핵심은 `x, y, z, v`와 `range/snr/noise`라서 각도가 1순위는 아니지만, 계산식은 맞는 쪽이 낫다.
+
+### 9.4 `num_det_obj > 0`인데 `Type 1`이 없는 프레임 fail 처리
+실시간 parser에서는 `header만 그럴듯하고 핵심 payload가 없는 프레임`을 성공으로 넘기면 안 된다.
+
+이번 작업에서 아래 조건은 `FAIL`로 본다.
+
+- `num_det_obj > 0`
+- 그런데 TLV loop 안에서 `Type 1` detected points payload를 한 번도 못 찾음
+
+이렇게 한 이유는 간단하다.
+
+- 이 프레임은 뒤 단계가 실제 좌표를 만들 수 없는 프레임이다.
+- 그런데 성공으로 넘기면 filter/DBSCAN/Kalman이 `이상한 0값 point`를 정상처럼 받을 수 있다.
+
+즉 이건 "몇 번 연속 안 오면 fail"보다 `프레임 단위에서 즉시 fail`이 맞다.
+
+### 9.5 cfg 전송 응답 로그 추가
+이전에는 runner가 cfg 파일을 CLI 포트로 보내기만 하고, 보드가 `Done`인지 `Error`인지 콘솔에서 바로 확인하기 어려웠다.
+
+이번 작업에서 실행 시작 시 아래 로그를 볼 수 있다.
+
+```text
+[CFG] >> profileCfg ...
+[CFG] << Done
+```
+
+그리고 `Error`, `Fail` 응답이 오면 즉시 예외를 올려서 bring-up 문제를 빨리 찾을 수 있게 했다.
 
 ## 10. TLV 담당자가 지금부터 공부할 순서
 처음부터 SDK 전체를 다 보려 하지 말고, 아래 순서로 가는 게 좋다.
@@ -326,6 +353,7 @@ python src/parser/tlv_parse_runner.py --help
 - packet length가 이상한 경우
 - SNR TLV가 없는 경우
 - point 수와 실제 payload 길이가 안 맞는 경우
+- `num_det_obj > 0`인데 `Type 1` payload가 없는 경우
 - 프레임이 중간에 잘린 경우
 
 ### 10.5 5단계: 성능 수치 남기기
