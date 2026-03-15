@@ -23,6 +23,8 @@
 - ~~malformed TLV 길이 검증 및 fail 처리~~
 - ~~unpack 예외 발생 시 fail 처리~~
 - ~~기본 resync 동작 구현~~
+- ~~`num_det_obj > 0`인데 `Type 1` payload가 없으면 frame fail 처리~~
+- ~~cfg 적용 시 CLI 응답(`Done`/`Error`) 콘솔 확인 가능하도록 보강~~
 - frame fail reason을 더 세분화해서 기록
 - raw byte overflow 발생 여부 계측
 - frame gap 원인 분류 로직 추가
@@ -73,3 +75,5 @@
 ## 업데이트 로그
 - 2026-03-14: 현재 구현 상태를 기준으로 완료 항목 취소선 정리
 - 2026-03-14: runtime CSV logging 연동 상태 반영
+- 2026-03-15: `Type 1` 누락 frame fail 처리 반영
+- 2026-03-15: cfg apply 응답 로그 출력 반영

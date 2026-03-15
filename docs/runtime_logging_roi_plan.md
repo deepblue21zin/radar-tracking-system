@@ -8,6 +8,23 @@
 
 ## 2. 현재 로그는 어떻게 남는가
 
+### 2.0 cfg 적용 로그
+실행 시작 직후에는 CLI 포트로 보낸 cfg 명령과 레이더 응답이 콘솔에 출력된다.
+
+예시:
+
+```text
+[CFG] >> frameCfg ...
+[CFG] << Done
+```
+
+의미:
+
+- `>>`: PC가 레이더에 보낸 명령
+- `<<`: 레이더가 돌려준 응답
+
+만약 `Error`, `Fail` 응답이 보이면 cfg 파일, demo binary, 보드 조합을 먼저 확인해야 한다.
+
 ### 2.1 콘솔 로그
 `src/parser/tlv_parse_runner.py`를 실행하면 실시간으로 아래 로그가 출력된다.
 
@@ -221,7 +238,7 @@ ROI를 줄이면 보통 아래 효과를 기대할 수 있다.
 python src/parser/tlv_parse_runner.py ^
   --cli-port COM6 ^
   --data-port COM5 ^
-  --config path\\to\\profile.cfg ^
+  --config config\\profile_3d.cfg ^
   --duration 60 ^
   --scenario baseline ^
   --roi-tag full_frame
