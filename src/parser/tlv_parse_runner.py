@@ -7,7 +7,7 @@ import time
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, Optional
+from typing import Dict, List, Optional
 
 import serial
 
@@ -280,12 +280,48 @@ class MMWaveSerialReader:
 
 
 def send_config(cli_port: serial.Serial, config_file: Path) -> None:
+    def read_cli_lines(quiet_window_sec: float = 0.08, max_wait_sec: float = 0.5) -> List[str]:
+        buffer = ""
+        deadline = time.time() + max_wait_sec
+        quiet_deadline = time.time() + quiet_window_sec
+
+        while time.time() < deadline:
+            waiting = cli_port.in_waiting
+            if waiting:
+                buffer += cli_port.read(waiting).decode("utf-8", errors="replace")
+                quiet_deadline = time.time() + quiet_window_sec
+                continue
+
+            if time.time() >= quiet_deadline:
+                break
+            time.sleep(0.01)
+
+        return [line.strip() for line in buffer.replace("\r", "\n").split("\n") if line.strip()]
+
+    def is_cli_error(line: str) -> bool:
+        lowered = line.lower()
+        return "error" in lowered or "fail" in lowered
+
+    startup_lines = read_cli_lines(quiet_window_sec=0.05, max_wait_sec=0.2)
+    for response in startup_lines:
+        print(f"[CFG] << {response}")
+
     lines = config_file.read_text(encoding="utf-8").splitlines()
     for line in lines:
         cmd = line.strip()
         if not cmd or cmd.startswith("%"):
             continue
-        cli_port.write((cmd + "\n").encode())
+
+        print(f"[CFG] >> {cmd}")
+        cli_port.write((cmd + "\n").encode("utf-8"))
+        cli_port.flush()
+
+        responses = read_cli_lines()
+        for response in responses:
+            print(f"[CFG] << {response}")
+            if is_cli_error(response):
+                raise RuntimeError(f"CLI rejected cfg command '{cmd}': {response}")
+
         time.sleep(0.01)
 
 

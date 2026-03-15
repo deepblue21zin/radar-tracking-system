@@ -45,14 +45,25 @@ radar-tracking-system/
 - Windows (COM 포트 기준) 또는 Linux (tty 포트로 치환)
 - TI IWR6843 + 유효한 mmWave cfg 파일
 
-필수 패키지:
+권장 환경 구성:
 ```bash
-pip install pyserial numpy scikit-learn filterpy
+conda create -n radar-track python=3.11 -y
+conda activate radar-track
+python -m pip install -r requirements.txt
+```
+
+필수 패키지(`requirements.txt`):
+```bash
+pyserial==3.5
+numpy==1.26.4
+scikit-learn==1.5.2
+filterpy==1.4.5
 ```
 
 참고:
 - `filterpy`는 pip 설치를 권장합니다.
 - 로컬 `src/filterpy-master`는 fallback 용도로만 사용합니다.
+- 현재 `requirements.txt`는 팀원이 다른 PC에서도 그대로 재현할 수 있는 최소 런타임 패키지만 남겨둔 상태입니다.
 
 ## 4. 빠른 시작
 프로젝트 루트(`radar-tracking-system/radar-tracking-system`)에서 실행:
@@ -61,19 +72,25 @@ pip install pyserial numpy scikit-learn filterpy
 python src/parser/tlv_parse_runner.py \
   --cli-port COM6 \
   --data-port COM5 \
-  --config path/to/profile.cfg \
+  --config config/profile_3d.cfg \
   --snr-threshold 8 \
   --dbscan-eps 0.6 \
   --dbscan-min-samples 4 \
   --association-gate 1.5 \
   --max-misses 8 \
-  --min-hits 2
+  --min-hits 2 \
+  --duration 30 \
+  --scenario baseline \
+  --roi-tag full_frame
 ```
 
 예상 로그:
 ```text
-frame=123 raw=87 filtered=51 clusters=3 tracks=2
+[CFG] >> sensorStop
+[CFG] << Done
+frame=123 packet=2848B raw=87 filtered=51 clusters=3 tracks=2 parser_ms=2.41 pipe_ms=7.88
 [PERF] fps=14.8 window=1.01s
+[SUMMARY] frames=300 avg_fps=14.92 avg_packet=2860.4B avg_parser_ms=2.31 parse_failures=0 resyncs=1 dropped_est=0
 ```
 
 ## 5. 실행 인자
@@ -136,6 +153,7 @@ frame=123 raw=87 filtered=51 clusters=3 tracks=2
 - COM 포트 매핑 확인(장치 관리자)
 - cfg 경로/권한 확인
 - Baudrate(115200/921600) 장비 설정과 일치 확인
+- 시작 직후 `[CFG] << Error ...`가 보이면 cfg/demo 조합이 맞는지 먼저 확인
 
 3. 트랙이 자주 끊김
 - `--association-gate` 증가
@@ -158,5 +176,6 @@ frame=123 raw=87 filtered=51 clusters=3 tracks=2
 - DBSCAN 개발 가이드: `docs/DBSCAN.md`
 - Kalman 개발 가이드: `docs/Kalman.md`
 - 런타임 로깅/ROI 계획: `docs/runtime_logging_roi_plan.md`
+- 수정 이력 리포트: `docs/correction report/`
 - 성능 로그: `docs/performance_log.md`
 - FMEA: `docs/FMEA.md`
