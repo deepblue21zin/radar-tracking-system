@@ -1,5 +1,6 @@
 """DBSCAN clustering for radar point clouds."""
 
+import os
 from typing import Iterable, List
 
 
@@ -21,6 +22,10 @@ def cluster_points(
     if not point_list:
         return []
 
+    # On some Windows setups joblib/loky warns because `wmic` is missing.
+    # Current point counts are small enough that single-thread DBSCAN is sufficient.
+    os.environ.setdefault("LOKY_MAX_CPU_COUNT", str(max(os.cpu_count() or 1, 1)))
+
     try:
         import numpy as np
         from sklearn.cluster import DBSCAN
@@ -34,7 +39,7 @@ def cluster_points(
     else:
         feature_mat = np.array([[p["x"], p["y"]] for p in point_list], dtype=float)
 
-    labels = DBSCAN(eps=eps, min_samples=min_samples).fit_predict(feature_mat)
+    labels = DBSCAN(eps=eps, min_samples=min_samples, n_jobs=1).fit_predict(feature_mat)
 
     clusters: List[dict] = []
     unique_labels = sorted(set(labels))
