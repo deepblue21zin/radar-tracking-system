@@ -32,6 +32,8 @@
 
 ```text
 frame=123 packet=2848B raw=87 filtered=51 clusters=3 tracks=2 parser_ms=2.41 pipe_ms=7.88
+  filter_ratio=0.59 raw_snr[min/avg/p90]=7.20/15.80/24.10 filtered_snr[min/avg/p90]=9.50/18.70/25.20 raw_range[min,max]=0.42/6.90 filtered_range[min,max]=1.10/5.40 removed={snr:22, noise:3, range:4, roi:0, keepout:5, near_front:2, right_rail:3, static:2}
+  filter_sample=filtered=[{x=0.23, y=1.82, z=0.04, snr=18.50, noise=4.00, v=0.11}, {x=0.25, y=1.88, z=0.05, snr=17.90, noise=3.80, v=0.08}]
 ```
 
 의미:
@@ -44,6 +46,11 @@ frame=123 packet=2848B raw=87 filtered=51 clusters=3 tracks=2 parser_ms=2.41 pip
 - `tracks`: tracker 출력 수
 - `parser_ms`: UART read + frame parse 시간
 - `pipe_ms`: filter + DBSCAN + tracker 처리 시간
+- `filter_ratio`: `filtered / raw`, filter가 얼마나 강하게 점을 줄였는지
+- `raw_snr[min/avg/p90]`, `filtered_snr[min/avg/p90]`: filter 전후 SNR 분포
+- `raw_range[min,max]`, `filtered_range[min,max]`: filter 전후 거리 범위
+- `removed={...}`: 어떤 규칙이 몇 점을 제거했는지
+- `filter_sample`: `(x, y, z, snr, noise, v)` 기준 샘플 point
 
 성능 로그 예시:
 
@@ -55,6 +62,31 @@ frame=123 packet=2848B raw=87 filtered=51 clusters=3 tracks=2 parser_ms=2.41 pip
 
 - 최근 약 1초 구간에서 실제 처리한 FPS
 
+### 2.1.1 좌표 preview 로그
+기본 로그에는 점 개수와 latency 중심의 요약만 나오고, 좌표값은 안 찍는다.
+
+필요하면 아래 옵션으로 좌표 preview를 켤 수 있다.
+
+```bash
+--coord-preview-count 3 --coord-preview-every 10
+```
+
+예시:
+
+```text
+frame=120 packet=1632B raw=22 filtered=22 clusters=2 tracks=2 parser_ms=0.41 pipe_ms=5.12
+  filtered_xyz=[(0.23, 1.82, 0.04), (0.25, 1.88, 0.05), (0.27, 1.95, 0.05)]
+  clusters_xyz=[{x=0.26, y=1.91, z=0.05, size=7}, {x=1.72, y=2.35, z=0.08, size=6}]
+  tracks_xy=[{id=1, x=0.25, y=1.90, vx=0.03, vy=0.07}, {id=2, x=1.70, y=2.30, vx=0.01, vy=0.04}]
+```
+
+의미:
+
+- `coord-preview-count`: 첫 N개 좌표만 표시
+- `coord-preview-every`: 매 N프레임마다 한 번만 표시
+
+이 방식이 좋은 이유는 좌표를 보고 디버그할 수 있으면서도, 콘솔이 과하게 무거워지는 걸 막을 수 있기 때문이다.
+
 실행 종료 시 요약 로그 예시:
 
 ```text
@@ -62,11 +94,12 @@ frame=123 packet=2848B raw=87 filtered=51 clusters=3 tracks=2 parser_ms=2.41 pip
 ```
 
 ### 2.2 파일 로그
-이제 실행할 때마다 기본적으로 CSV 로그가 자동 저장된다.
+이제 실행할 때마다 기본적으로 CSV 로그와 사람이 읽기 쉬운 텍스트 로그가 자동 저장된다.
 
 저장 위치:
 
 - 프레임별 로그: `evidence/runtime_logs/frames_YYYYMMDD_HHMMSS.csv`
+- 프레임별 텍스트 로그: `evidence/runtime_logs/frames_YYYYMMDD_HHMMSS.log`
 - 실행 요약 로그: `evidence/runtime_logs/run_summary.csv`
 
 즉, 이제는 `실행할 때마다 자동 기록된다`.
@@ -99,11 +132,36 @@ frame=123 packet=2848B raw=87 filtered=51 clusters=3 tracks=2 parser_ms=2.41 pip
 - `tracks`
 - `parser_latency_ms`
 - `pipeline_latency_ms`
+- `filter_ratio`
+- `raw_snr_min`, `raw_snr_avg`, `raw_snr_p90`
+- `filtered_snr_min`, `filtered_snr_avg`, `filtered_snr_p90`
+- `raw_range_min`, `raw_range_max`
+- `filtered_range_min`, `filtered_range_max`
+- `removed_snr`, `removed_noise`, `removed_range`
+- `removed_axis_roi`, `removed_keepout`
+- `removed_near_front_keepout`, `removed_right_rail_keepout`
+- `removed_static_clutter`
 - `parse_failures_so_far`
 - `resync_events_so_far`
 - `dropped_frames_estimate_so_far`
+- `frame_summary`
+- `filter_stats_summary`
+- `filter_sample_preview`
+- `filtered_preview`
+- `cluster_preview`
+- `track_preview`
 
 이 로그는 `한 프레임 단위`로 자세히 보는 용도다.
+
+`frame_summary`에는 콘솔에 보이는 것과 비슷한 한 줄 요약이 들어간다.
+
+예시:
+
+```text
+frame=271 gap=0 packet=1632B num_obj=22 num_tlv=6 subframe=0 raw=22 filtered=22 clusters=2 tracks=2 parser_ms=0.86 pipe_ms=2.38 parse_failures=0 resyncs=1 dropped_est=23
+```
+
+즉, CSV를 그대로 열어도 `숫자만 나열된 표`가 아니라 `숫자와 의미가 함께 붙은 요약`을 바로 볼 수 있다.
 
 ### 3.2 실행 요약 로그
 `run_summary.csv`에는 실행 1회당 1줄이 추가된다.
@@ -123,6 +181,11 @@ frame=123 packet=2848B raw=87 filtered=51 clusters=3 tracks=2 parser_ms=2.41 pip
 - `avg_tracks`
 - `avg_parser_latency_ms`
 - `avg_pipeline_latency_ms`
+- `avg_filter_ratio`
+- `avg_removed_snr`, `avg_removed_noise`, `avg_removed_range`
+- `avg_removed_axis_roi`, `avg_removed_keepout`
+- `avg_removed_near_front_keepout`, `avg_removed_right_rail_keepout`
+- `avg_removed_static_clutter`
 - `bytes_received`
 - `parse_failures`
 - `resync_events`

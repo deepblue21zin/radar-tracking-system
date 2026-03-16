@@ -1,0 +1,68 @@
+PROJECT_NAME           = "radar-tracking-system"
+PROJECT_BRIEF          = "TI mmWave radar tracking pipeline documentation"
+OUTPUT_DIRECTORY       = docs/doxygen
+CREATE_SUBDIRS         = NO
+ALLOW_UNICODE_NAMES    = YES
+OUTPUT_LANGUAGE        = English
+
+MARKDOWN_SUPPORT       = YES
+TOC_INCLUDE_HEADINGS   = 2
+USE_MDFILE_AS_MAINPAGE = docs/doxygen_overview.md
+
+FULL_PATH_NAMES        = NO
+STRIP_FROM_PATH        = .
+
+INPUT                  = README.md \
+                         docs/architecture.md \
+                         docs/doxygen_overview.md \
+                         src
+FILE_PATTERNS          = *.md \
+                         *.py \
+                         *.c \
+                         *.h
+RECURSIVE              = YES
+EXCLUDE                = docs/doxygen \
+                         src/filterpy-master
+EXCLUDE_PATTERNS       = */__pycache__/* \
+                         */docs/error/* \
+                         */docs/correction report/* \
+                         */evidence/* \
+                         */experiments/*
+
+EXTRACT_ALL            = YES
+EXTRACT_STATIC         = YES
+SORT_MEMBER_DOCS       = NO
+
+WARN_IF_UNDOCUMENTED   = NO
+WARN_IF_DOC_ERROR      = YES
+QUIET                  = NO
+
+GENERATE_HTML          = YES
+GENERATE_LATEX         = NO
+HTML_OUTPUT            = html
+GENERATE_TREEVIEW      = YES
+SEARCHENGINE           = YES
+
+SOURCE_BROWSER         = YES
+INLINE_SOURCES         = YES
+REFERENCES_RELATION    = YES
+REFERENCED_BY_RELATION = YES
+
+EXTENSION_MAPPING      = py=Python
+ENABLE_PREPROCESSING   = YES
+MACRO_EXPANSION        = YES
+SKIP_FUNCTION_MACROS   = YES
+
+HAVE_DOT               = YES
+DOT_PATH               = "C:/Program Files/Graphviz/bin"
+DOT_IMAGE_FORMAT       = png
+INTERACTIVE_SVG        = NO
+DOT_MULTI_TARGETS      = YES
+DOT_GRAPH_MAX_NODES    = 80
+MAX_DOT_GRAPH_DEPTH    = 3
+
+CALL_GRAPH             = YES
+CALLER_GRAPH           = YES
+DIRECTORY_GRAPH        = YES
+INCLUDE_GRAPH          = YES
+INCLUDED_BY_GRAPH      = YES
