@@ -149,6 +149,26 @@
 - 기존 실행 명령을 바꾸지 않아도 된다.
 - 기존 import 경로를 쓰던 코드도 크게 안 깨진다.
 
+### 3.3.2 `src/visualization/live_rail_viewer.py`
+viewer는 지금 기준으로 단순 point scatter가 아니라 "사람이 어떻게 움직이는지 읽기 위한 디버그 화면" 쪽으로 바뀌었다.
+
+포함된 요소:
+
+- 최근 filtered point를 누적한 `motion cloud`
+- track별 `trail`
+- `vx, vy` 기반 velocity arrow
+- `top-down motion` 평면 뷰
+- `removed_range/roi/keepout/static`, `parse_failures/resync_events/dropped_frames_estimate` 오버레이
+- `sensor_yaw_deg` 기반 XY 평면 회전 보정
+
+즉 viewer는 이제 "예쁘게 보기"보다
+
+- filter가 왜 점을 버렸는지
+- parser 상태가 흔들리는지
+- 움직임 방향이 설치 방향 기준으로 맞는지
+
+를 같이 읽기 위한 도구로 보는 편이 맞다.
+
 ## 3.4 `src/communication/control_protocol.py`
 Python에서 STM32로 보낼 제어 패킷 인코더/송신기를 추가했다.
 

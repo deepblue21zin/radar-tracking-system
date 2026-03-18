@@ -49,6 +49,46 @@
   - `parse_failures = 2`, `resync_events = 32`, `dropped_frames_estimate = 29`
   - `zero_cluster_frames = 97/271`, `zero_track_frames = 110/271`
   - 즉, filter는 실제로 점을 줄였지만, 사람 이동이 화면에서 연속적으로 보이기에는 아직 track/cluster 끊김이 많다.
+- `evidence/runtime_logs/frames_20260318_215954.csv`
+  - 약 `60.0초` 동안 `555 frame` 기록
+  - 실효 FPS 약 `9.25`
+  - `avg_raw_points ≈ 58.49 -> avg_filtered_points ≈ 17.43`
+  - `avg_filter_ratio ≈ 0.29`
+  - `avg_removed_range ≈ 36.70`
+  - `avg_removed_axis_roi ≈ 4.36`
+  - `parse_failures = 4`, `resync_events = 78`, `dropped_frames_estimate = 45`
+  - `zero_track_frames = 18/555`
+  - 즉, 이 run에서는 near-front/static보다 `max_range=3.0m`가 가장 큰 제거 요인이었고, baseline/full-frame 확인 용도로는 과필터링 가능성이 크다.
+- `C:\Users\JSjeong\Videos\화면 녹화\화면 녹화 중 2026-03-18 221638.mp4`
+  - 화면 샘플 프레임에서 `filtered=4~6`, `clusters=0`, `tracks=0` 구간이 여러 번 보였다.
+  - top-down 패널은 사용자가 레이더를 바라보며 앞뒤로 움직인 체감과 달리, 궤적이 `X` 방향 이동처럼 읽혔다.
+  - 즉, 지금 시점의 viewer는 "연속성 문제"뿐 아니라 "sensor yaw 보정 부재"도 함께 갖고 있었다.
+- `evidence/runtime_logs/frames_20260318_225405.csv`
+  - 약 `60.0초` 동안 `590 frame` 기록
+  - 실효 FPS 약 `9.83`
+  - `avg_raw_points ≈ 22.22 -> avg_filtered_points ≈ 9.35`
+  - `avg_filter_ratio ≈ 0.41`
+  - `avg_removed_range ≈ 5.93`
+  - `avg_removed_axis_roi ≈ 6.54`
+  - `parse_failures = 5`, `resync_events = 62`, `dropped_frames_estimate = 10`
+  - `zero_cluster_frames = 133/590`, `zero_track_frames = 139/590`
+  - 최장 zero-track streak는 `frame 68-94`의 `27 frame`이고, 이 구간에서 `raw 520 -> filtered 41`, `removed_range = 427`, `removed_roi = 52`였다.
+  - 후반 `frame 472-507`도 `raw 615 -> filtered 29`, `removed_range = 460`, `removed_roi = 126`으로 다시 크게 잘렸다.
+  - 즉, 레이더를 바라보며 앞뒤로 움직인 이번 run에서도 장시간 끊김의 주원인은 parser보다 `max_range=3.0m`와 현재 `z/ROI gate` 조합이다.
+  - 또한 viewer 계산 경로를 `runtime_pipeline.process_runtime_frame()`으로 통합하기 전에는, runtime 수정이 viewer에 늦게 반영될 구조적 위험이 있었다.
+- `evidence/runtime_logs/frames_20260318_231830.csv`
+  - 약 `133초` 동안 `1299 frame` 기록
+  - 실효 FPS 약 `9.75`
+  - `avg_raw_points ≈ 22.03 -> avg_filtered_points ≈ 8.94`
+  - `avg_filter_ratio ≈ 0.39`
+  - `avg_removed_range ≈ 6.05`
+  - `avg_removed_axis_roi ≈ 6.85`
+  - `parse_failures = 17`, `resync_events = 205`, `dropped_frames_estimate = 33`
+  - `zero_cluster_frames = 538/1299`, `zero_track_frames = 552/1299`
+  - 최장 zero-track streak는 `frame 833-906`의 `74 frame`이며, 이 구간은 `raw 1062 -> filtered 88`, `removed_range = 760`, `removed_roi = 211`였다.
+  - preview track 좌표로는 `y=1.74 -> 0.60 -> 1.31`, `y=1.30 -> 0.32 -> 1.12`처럼 앞뒤 왕복 자체는 읽힌다.
+  - 다만 `x` 변화폭도 커서, 현재 축 보정은 이전보다 나아졌어도 아직 완전히 정렬됐다고 보긴 어렵다.
+  - 결론적으로 이번 장시간 run에서도 핵심 문제는 `range + ROI gate`에 의한 continuity 저하이고, far 구간에서 track가 많이 끊긴다.
 
 ### 1.3 지금 가장 먼저 해결해야 하는 순서
 1. DBSCAN 실행 환경 정상화
@@ -225,6 +265,8 @@ PY
 4. ~~`max_range`를 명시적으로 넣어 far clutter를 제거하기~~
 5. `snr_threshold`, `max_noise`를 분포 기반으로 올려 low-quality point를 추가 제거
 6. `right_rail_padding`, `static_v_min`, `static_max_snr`는 rail clutter가 실제로 보일 때만 미세 조정
+7. viewer에서 앞뒤/좌우가 체감과 다르면 `sensor_yaw_deg`를 먼저 맞춘 뒤 filter 결과를 해석하기
+8. 화면 녹화나 저사양 환경에서는 `--max-vis-fps 5` 수준으로 낮춰 parser backlog 영향을 줄인 뒤 continuity를 다시 비교하기
 
 ### 3.6 range-dependent threshold 검토
 먼 거리로 갈수록 SNR/노이즈 분포가 달라질 수 있다.
