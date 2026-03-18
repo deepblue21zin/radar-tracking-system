@@ -1,0 +1,10 @@
+python src/parser/tlv_parse_runner.py \
+  --cli-port COM6 \
+  --data-port COM5 \
+  --config config/profile_3d.cfg \
+  --control-enabled \
+  --control-zone-x-min -0.8 \
+  --control-zone-x-max 0.8 \
+  --control-zone-y-min 0.3 \
+  --control-zone-y-max 1.2 \
+  --control-out-port COM7
