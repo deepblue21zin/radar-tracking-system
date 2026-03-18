@@ -14,7 +14,7 @@ DEFAULT_RUNTIME_PARAMS_PATH = PROJECT_ROOT / DEFAULT_RUNTIME_PARAMS_RELATIVE
 
 
 GLOBAL_RUNTIME_PARAM_DEFAULTS: Dict[str, Any] = {
-    "snr_threshold": 8.0,
+    "snr_threshold": 110.0,
     "max_noise": None,
     "min_range": 0.0,
     "max_range": 3.0,
@@ -36,19 +36,19 @@ GLOBAL_RUNTIME_PARAM_DEFAULTS: Dict[str, Any] = {
     "right_rail_length": 8.0,
     "right_rail_z_base": 0.0,
     "right_rail_height": 1.0,
-    "right_rail_padding": 0.15,
+    "right_rail_padding": 0.05,
     "disable_static_clutter_filter": False,
     "static_clutter_padding": 0.25,
     "static_v_min": 0.12,
-    "static_max_snr": 18.0,
+    "static_max_snr": 180.0,
     "filter_sample_count": 2,
     "dbscan_eps": 0.35,
-    "dbscan_min_samples": 4,
+    "dbscan_min_samples": 3,
     "use_velocity_feature": False,
     "dbscan_velocity_weight": 0.25,
     "dbscan_adaptive_eps_bands": [
-        {"r_min": 0.0, "r_max": 1.4, "eps": 0.20},
-        {"r_min": 1.4, "r_max": None, "eps": 0.35},
+        {"r_min": 0.0, "r_max": 1.4, "eps": 0.22},
+        {"r_min": 1.4, "r_max": None, "eps": 0.45},
     ],
     "association_gate": 1.5,
     "max_misses": 8,
