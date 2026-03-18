@@ -85,6 +85,9 @@ RUNNER_PARAM_DEFAULT_KEYS = (
     "max_misses",
     "min_hits",
     "report_miss_tolerance",
+    "measurement_target_lock_frames",
+    "measurement_target_reacquire_gate",
+    "measurement_target_max_abs_x",
     "control_enabled",
     "control_zone_x_min",
     "control_zone_x_max",
@@ -99,6 +102,7 @@ RUNNER_PARAM_DEFAULT_KEYS = (
     "control_approach_speed_threshold",
     "control_stopped_speed_threshold",
     "control_clear_frames",
+    "control_target_lock_frames",
     "control_out_port",
     "control_out_baudrate",
     "control_out_heartbeat_ms",
@@ -188,12 +192,29 @@ class CsvRunLogger:
                 "filtered_range_min",
                 "filtered_range_max",
                 "primary_cluster_label",
+                "primary_cluster_x",
+                "primary_cluster_y",
                 "primary_cluster_range_m",
                 "primary_cluster_size",
                 "primary_cluster_confidence",
                 "primary_track_id",
+                "primary_track_x",
+                "primary_track_y",
                 "primary_track_range_m",
                 "primary_track_confidence",
+                "measurement_target_source",
+                "measurement_track_id",
+                "measurement_target_x",
+                "measurement_target_y",
+                "measurement_target_range_m",
+                "measurement_target_confidence",
+                "persistent_track_id",
+                "persistent_track_x",
+                "persistent_track_y",
+                "persistent_track_range_m",
+                "persistent_track_confidence",
+                "persistent_track_hits",
+                "persistent_track_age",
                 "removed_snr",
                 "removed_noise",
                 "removed_range",
@@ -206,6 +227,9 @@ class CsvRunLogger:
                 "control_event",
                 "control_speed_ratio",
                 "control_track_id",
+                "control_target_x",
+                "control_target_y",
+                "control_target_range_m",
                 "control_zone_distance_m",
                 "control_closing_speed_mps",
                 "control_state_changed",
@@ -563,6 +587,96 @@ def _track_range_m(track: object) -> float:
     return math.hypot(x, y)
 
 
+class MeasurementTargetSelector:
+    def __init__(
+        self,
+        lock_frames: int = 12,
+        reacquire_gate: float = 0.9,
+        max_abs_x: Optional[float] = None,
+    ):
+        if lock_frames < 0:
+            raise ValueError("measurement_target_lock_frames must be >= 0")
+        if reacquire_gate <= 0.0:
+            raise ValueError("measurement_target_reacquire_gate must be > 0.0")
+        if max_abs_x is not None and max_abs_x <= 0.0:
+            raise ValueError("measurement_target_max_abs_x must be > 0.0 when provided")
+
+        self.lock_frames = int(lock_frames)
+        self.reacquire_gate = float(reacquire_gate)
+        self.max_abs_x = float(max_abs_x) if max_abs_x is not None else None
+        self._selected_track_id: Optional[int] = None
+        self._lock_frames_remaining = 0
+        self._last_x: Optional[float] = None
+        self._last_y: Optional[float] = None
+
+    @staticmethod
+    def _priority(track: object) -> tuple:
+        return (
+            int(getattr(track, "hits", 0)),
+            int(getattr(track, "age", 0)),
+            float(getattr(track, "confidence", 0.0)),
+            float(getattr(track, "y", 0.0)),
+            -abs(float(getattr(track, "x", 0.0))),
+            -int(getattr(track, "misses", 0)),
+            -int(getattr(track, "track_id", 0)),
+        )
+
+    def _remember(self, track: object) -> object:
+        self._selected_track_id = getattr(track, "track_id", None)
+        self._lock_frames_remaining = self.lock_frames
+        self._last_x = float(getattr(track, "x", 0.0))
+        self._last_y = float(getattr(track, "y", 0.0))
+        return track
+
+    def _preferred_tracks(self, tracks: List[object]) -> List[object]:
+        if self.max_abs_x is None:
+            return tracks
+
+        preferred = [
+            track for track in tracks if abs(float(getattr(track, "x", 0.0))) <= self.max_abs_x
+        ]
+        return preferred if preferred else tracks
+
+    def select_track(self, tracks: List[object]) -> Optional[object]:
+        if not tracks:
+            if self._lock_frames_remaining > 0:
+                self._lock_frames_remaining -= 1
+            else:
+                self._selected_track_id = None
+            return None
+
+        candidate_tracks = self._preferred_tracks(tracks)
+
+        if self._selected_track_id is not None:
+            for track in candidate_tracks:
+                if getattr(track, "track_id", None) == self._selected_track_id:
+                    return self._remember(track)
+
+        if self._last_x is not None and self._last_y is not None:
+            reacquire_candidates = []
+            for track in candidate_tracks:
+                dx = float(getattr(track, "x", 0.0)) - self._last_x
+                dy = float(getattr(track, "y", 0.0)) - self._last_y
+                dist = math.hypot(dx, dy)
+                if dist <= self.reacquire_gate:
+                    reacquire_candidates.append(
+                        (
+                            dist,
+                            -int(getattr(track, "hits", 0)),
+                            -float(getattr(track, "confidence", 0.0)),
+                            -float(getattr(track, "y", 0.0)),
+                            abs(float(getattr(track, "x", 0.0))),
+                            track,
+                        )
+                    )
+
+            if reacquire_candidates:
+                reacquire_candidates.sort(key=lambda item: item[:-1])
+                return self._remember(reacquire_candidates[0][-1])
+
+        return self._remember(max(candidate_tracks, key=self._priority))
+
+
 def select_primary_cluster(clusters: List[dict]) -> Optional[dict]:
     if not clusters:
         return None
@@ -591,6 +705,50 @@ def select_primary_track(tracks: List[object]) -> Optional[object]:
     )
 
 
+def select_measurement_cluster(
+    clusters: List[dict],
+    max_abs_x: Optional[float] = None,
+) -> Optional[dict]:
+    if not clusters:
+        return None
+
+    candidate_clusters = clusters
+    if max_abs_x is not None:
+        preferred_clusters = [
+            cluster for cluster in clusters if abs(float(cluster.get("x", 0.0))) <= max_abs_x
+        ]
+        if preferred_clusters:
+            candidate_clusters = preferred_clusters
+
+    return max(
+        candidate_clusters,
+        key=lambda cluster: (
+            int(cluster.get("size", 0)),
+            float(cluster.get("confidence", 0.0)),
+            float(cluster.get("y", 0.0)),
+            -abs(float(cluster.get("x", 0.0))),
+            -_cluster_range_m(cluster),
+        ),
+    )
+
+
+def select_persistent_track(tracks: List[object]) -> Optional[object]:
+    if not tracks:
+        return None
+
+    return max(
+        tracks,
+        key=lambda track: (
+            int(getattr(track, "hits", 0)),
+            int(getattr(track, "age", 0)),
+            -int(getattr(track, "misses", 0)),
+            float(getattr(track, "confidence", 0.0)),
+            -_track_range_m(track),
+            -int(getattr(track, "track_id", 0)),
+        ),
+    )
+
+
 def format_primary_target_summary(primary_cluster: Optional[dict], primary_track: Optional[object]) -> str:
     parts: List[str] = []
 
@@ -599,6 +757,8 @@ def format_primary_target_summary(primary_cluster: Optional[dict], primary_track
             "primary_cluster="
             + "{"
             + f"label={primary_cluster.get('label', -1)}, "
+            + f"x={float(primary_cluster.get('x', 0.0)):.2f}, "
+            + f"y={float(primary_cluster.get('y', 0.0)):.2f}, "
             + f"range={_cluster_range_m(primary_cluster):.2f}m, "
             + f"size={int(primary_cluster.get('size', 0))}"
             + "}"
@@ -609,8 +769,76 @@ def format_primary_target_summary(primary_cluster: Optional[dict], primary_track
             "primary_track="
             + "{"
             + f"id={getattr(primary_track, 'track_id', -1)}, "
+            + f"x={float(getattr(primary_track, 'x', 0.0)):.2f}, "
+            + f"y={float(getattr(primary_track, 'y', 0.0)):.2f}, "
             + f"range={_track_range_m(primary_track):.2f}m, "
             + f"hits={getattr(primary_track, 'hits', 0)}"
+            + "}"
+        )
+
+    return " ".join(parts)
+
+
+def format_measurement_target_summary(
+    measurement_track: Optional[object],
+    measurement_cluster: Optional[dict],
+) -> str:
+    if measurement_track is not None:
+        return (
+            "measurement_track="
+            + "{"
+            + f"id={getattr(measurement_track, 'track_id', -1)}, "
+            + f"x={float(getattr(measurement_track, 'x', 0.0)):.2f}, "
+            + f"y={float(getattr(measurement_track, 'y', 0.0)):.2f}, "
+            + f"range={_track_range_m(measurement_track):.2f}m, "
+            + f"hits={int(getattr(measurement_track, 'hits', 0))}"
+            + "}"
+        )
+
+    if measurement_cluster is not None:
+        return (
+            "measurement_cluster="
+            + "{"
+            + f"label={measurement_cluster.get('label', -1)}, "
+            + f"x={float(measurement_cluster.get('x', 0.0)):.2f}, "
+            + f"y={float(measurement_cluster.get('y', 0.0)):.2f}, "
+            + f"range={_cluster_range_m(measurement_cluster):.2f}m, "
+            + f"size={int(measurement_cluster.get('size', 0))}"
+            + "}"
+        )
+
+    return ""
+
+
+def format_comparison_target_summary(
+    persistent_track: Optional[object],
+    control_decision: Optional[object],
+) -> str:
+    parts: List[str] = []
+
+    if persistent_track is not None:
+        parts.append(
+            "persistent_track="
+            + "{"
+            + f"id={getattr(persistent_track, 'track_id', -1)}, "
+            + f"x={float(getattr(persistent_track, 'x', 0.0)):.2f}, "
+            + f"y={float(getattr(persistent_track, 'y', 0.0)):.2f}, "
+            + f"range={_track_range_m(persistent_track):.2f}m, "
+            + f"hits={int(getattr(persistent_track, 'hits', 0))}, "
+            + f"age={int(getattr(persistent_track, 'age', 0))}"
+            + "}"
+        )
+
+    if control_decision is not None and control_decision.target_x is not None and control_decision.target_y is not None:
+        control_range_m = math.hypot(float(control_decision.target_x), float(control_decision.target_y))
+        parts.append(
+            "control_target="
+            + "{"
+            + f"id={control_decision.track_id if control_decision.track_id is not None else '-'}, "
+            + f"x={float(control_decision.target_x):.2f}, "
+            + f"y={float(control_decision.target_y):.2f}, "
+            + f"range={control_range_m:.2f}m, "
+            + f"cmd={control_decision.command}"
             + "}"
         )
 
@@ -790,6 +1018,9 @@ def run_realtime(
     max_misses: int = 8,
     min_hits: int = 2,
     report_miss_tolerance: int = 0,
+    measurement_target_lock_frames: int = 12,
+    measurement_target_reacquire_gate: float = 0.9,
+    measurement_target_max_abs_x: Optional[float] = None,
     control_enabled: bool = False,
     control_zone_x_min: Optional[float] = None,
     control_zone_x_max: Optional[float] = None,
@@ -804,6 +1035,7 @@ def run_realtime(
     control_approach_speed_threshold: float = 0.1,
     control_stopped_speed_threshold: float = 0.05,
     control_clear_frames: int = 3,
+    control_target_lock_frames: int = 6,
     control_out_port: Optional[str] = None,
     control_out_baudrate: int = 115200,
     control_out_heartbeat_ms: int = 200,
@@ -818,6 +1050,11 @@ def run_realtime(
     config_path = Path(config_file)
     params_file_text = str(params_file) if params_file is not None else ""
     tracker = None
+    measurement_selector = MeasurementTargetSelector(
+        lock_frames=measurement_target_lock_frames,
+        reacquire_gate=measurement_target_reacquire_gate,
+        max_abs_x=measurement_target_max_abs_x,
+    )
     speed_controller = None
     control_writer = None
     dbscan_import_error_printed = False
@@ -912,12 +1149,13 @@ def run_realtime(
             approach_speed_threshold=control_approach_speed_threshold,
             stationary_speed_threshold=control_stopped_speed_threshold,
             clear_frames_required=control_clear_frames,
+            target_lock_frames=control_target_lock_frames,
         )
         emit_log(
             "[CTRL] enabled "
             f"zone={control_zone.describe()} slow_dist={control_slow_distance:.2f} "
             f"stop_dist={control_stop_distance:.2f} resume_dist={control_resume_distance:.2f} "
-            f"slow_speed={control_slow_speed_ratio:.2f}"
+            f"slow_speed={control_slow_speed_ratio:.2f} target_lock_frames={control_target_lock_frames}"
         )
         if control_out_port is not None:
             control_writer = ControlPacketSerialWriter(
@@ -936,6 +1174,17 @@ def run_realtime(
             max_misses=max_misses,
             min_hits=min_hits,
             report_miss_tolerance=report_miss_tolerance,
+        )
+        emit_log(
+            "[TRACKER] enabled "
+            f"association_gate={association_gate:.2f} max_misses={max_misses} "
+            f"min_hits={min_hits} report_miss_tolerance={report_miss_tolerance}"
+        )
+        emit_log(
+            "[MEASURE] enabled "
+            f"lock_frames={measurement_target_lock_frames} "
+            f"reacquire_gate={measurement_target_reacquire_gate:.2f} "
+            f"max_abs_x={measurement_target_max_abs_x if measurement_target_max_abs_x is not None else 'off'}"
         )
     except ImportError as exc:
         emit_log(f"[WARN] Kalman tracker disabled: {exc}")
@@ -1027,9 +1276,22 @@ def run_realtime(
                     if tracker is not None:
                         tracks = tracker.update(clusters, frame_ts=now)
 
+                    measurement_track = measurement_selector.select_track(tracks) if tracks else None
+                    measurement_cluster = None
+                    if measurement_track is None:
+                        measurement_cluster = select_measurement_cluster(
+                            clusters,
+                            max_abs_x=measurement_target_max_abs_x,
+                        )
+
                     control_decision = None
                     if speed_controller is not None:
-                        control_inputs = tracks if tracks else clusters
+                        if measurement_track is not None:
+                            control_inputs = [measurement_track]
+                        elif measurement_cluster is not None:
+                            control_inputs = [measurement_cluster]
+                        else:
+                            control_inputs = []
                         control_decision = speed_controller.update(control_inputs)
                         if control_decision.changed or control_decision.command != "RESUME":
                             zone_dist_text = (
@@ -1096,7 +1358,10 @@ def run_realtime(
 
                     primary_cluster = select_primary_cluster(clusters)
                     primary_track = select_primary_track(tracks)
+                    persistent_track = select_persistent_track(tracks)
                     primary_target_summary = format_primary_target_summary(primary_cluster, primary_track)
+                    measurement_target_summary = format_measurement_target_summary(measurement_track, measurement_cluster)
+                    comparison_target_summary = format_comparison_target_summary(persistent_track, control_decision)
 
                     frame_summary = format_frame_summary(
                         frame=frame,
@@ -1112,6 +1377,10 @@ def run_realtime(
                     emit_log(f"  {filter_stats_summary}")
                     if primary_target_summary:
                         emit_log(f"  {primary_target_summary}")
+                    if measurement_target_summary:
+                        emit_log(f"  {measurement_target_summary}")
+                    if comparison_target_summary:
+                        emit_log(f"  {comparison_target_summary}")
                     if filter_sample_preview:
                         emit_log(f"  filter_sample={filter_sample_preview}")
                     if filtered_preview:
@@ -1150,6 +1419,16 @@ def run_realtime(
                             "filtered_range_min": round(filter_stats.filtered_range_min, 3) if filter_stats.filtered_range_min is not None else "",
                             "filtered_range_max": round(filter_stats.filtered_range_max, 3) if filter_stats.filtered_range_max is not None else "",
                             "primary_cluster_label": primary_cluster.get("label", "") if primary_cluster is not None else "",
+                            "primary_cluster_x": (
+                                round(float(primary_cluster.get("x", 0.0)), 3)
+                                if primary_cluster is not None
+                                else ""
+                            ),
+                            "primary_cluster_y": (
+                                round(float(primary_cluster.get("y", 0.0)), 3)
+                                if primary_cluster is not None
+                                else ""
+                            ),
                             "primary_cluster_range_m": round(_cluster_range_m(primary_cluster), 3) if primary_cluster is not None else "",
                             "primary_cluster_size": int(primary_cluster.get("size", 0)) if primary_cluster is not None else "",
                             "primary_cluster_confidence": (
@@ -1158,10 +1437,91 @@ def run_realtime(
                                 else ""
                             ),
                             "primary_track_id": getattr(primary_track, "track_id", "") if primary_track is not None else "",
+                            "primary_track_x": (
+                                round(float(getattr(primary_track, "x", 0.0)), 3)
+                                if primary_track is not None
+                                else ""
+                            ),
+                            "primary_track_y": (
+                                round(float(getattr(primary_track, "y", 0.0)), 3)
+                                if primary_track is not None
+                                else ""
+                            ),
                             "primary_track_range_m": round(_track_range_m(primary_track), 3) if primary_track is not None else "",
                             "primary_track_confidence": (
                                 round(float(getattr(primary_track, "confidence", 0.0)), 3)
                                 if primary_track is not None
+                                else ""
+                            ),
+                            "measurement_target_source": (
+                                "track"
+                                if measurement_track is not None
+                                else "cluster"
+                                if measurement_cluster is not None
+                                else ""
+                            ),
+                            "measurement_track_id": (
+                                getattr(measurement_track, "track_id", "")
+                                if measurement_track is not None
+                                else ""
+                            ),
+                            "measurement_target_x": (
+                                round(float(getattr(measurement_track, "x", 0.0)), 3)
+                                if measurement_track is not None
+                                else round(float(measurement_cluster.get("x", 0.0)), 3)
+                                if measurement_cluster is not None
+                                else ""
+                            ),
+                            "measurement_target_y": (
+                                round(float(getattr(measurement_track, "y", 0.0)), 3)
+                                if measurement_track is not None
+                                else round(float(measurement_cluster.get("y", 0.0)), 3)
+                                if measurement_cluster is not None
+                                else ""
+                            ),
+                            "measurement_target_range_m": (
+                                round(_track_range_m(measurement_track), 3)
+                                if measurement_track is not None
+                                else round(_cluster_range_m(measurement_cluster), 3)
+                                if measurement_cluster is not None
+                                else ""
+                            ),
+                            "measurement_target_confidence": (
+                                round(float(getattr(measurement_track, "confidence", 0.0)), 3)
+                                if measurement_track is not None
+                                else round(float(measurement_cluster.get("confidence", 0.0)), 3)
+                                if measurement_cluster is not None
+                                else ""
+                            ),
+                            "persistent_track_id": getattr(persistent_track, "track_id", "") if persistent_track is not None else "",
+                            "persistent_track_x": (
+                                round(float(getattr(persistent_track, "x", 0.0)), 3)
+                                if persistent_track is not None
+                                else ""
+                            ),
+                            "persistent_track_y": (
+                                round(float(getattr(persistent_track, "y", 0.0)), 3)
+                                if persistent_track is not None
+                                else ""
+                            ),
+                            "persistent_track_range_m": (
+                                round(_track_range_m(persistent_track), 3)
+                                if persistent_track is not None
+                                else ""
+                            ),
+                            "persistent_track_confidence": (
+                                round(float(getattr(persistent_track, "confidence", 0.0)), 3)
+                                if persistent_track is not None
+                                else ""
+                            ),
+                            "persistent_track_hits": (
+                                int(getattr(persistent_track, "hits", 0))
+                                if persistent_track is not None
+                                else ""
+                            ),
+                            "persistent_track_age": (
+                                int(getattr(persistent_track, "age", 0))
+                                if persistent_track is not None
                                 else ""
                             ),
                             "removed_snr": filter_stats.removed_snr,
@@ -1176,6 +1536,23 @@ def run_realtime(
                             "control_event": control_decision.primary_event if control_decision is not None else "",
                             "control_speed_ratio": round(control_decision.speed_ratio, 3) if control_decision is not None else "",
                             "control_track_id": control_decision.track_id if control_decision is not None else "",
+                            "control_target_x": (
+                                round(float(control_decision.target_x), 3)
+                                if control_decision is not None and control_decision.target_x is not None
+                                else ""
+                            ),
+                            "control_target_y": (
+                                round(float(control_decision.target_y), 3)
+                                if control_decision is not None and control_decision.target_y is not None
+                                else ""
+                            ),
+                            "control_target_range_m": (
+                                round(math.hypot(float(control_decision.target_x), float(control_decision.target_y)), 3)
+                                if control_decision is not None
+                                and control_decision.target_x is not None
+                                and control_decision.target_y is not None
+                                else ""
+                            ),
                             "control_zone_distance_m": (
                                 round(control_decision.zone_distance_m, 3)
                                 if control_decision is not None and control_decision.zone_distance_m is not None
@@ -1334,6 +1711,9 @@ def build_arg_parser(defaults: Dict[str, object]) -> argparse.ArgumentParser:
     parser.add_argument("--max-misses", type=int, default=defaults["max_misses"])
     parser.add_argument("--min-hits", type=int, default=defaults["min_hits"])
     parser.add_argument("--report-miss-tolerance", type=int, default=defaults["report_miss_tolerance"])
+    parser.add_argument("--measurement-target-lock-frames", type=int, default=defaults["measurement_target_lock_frames"])
+    parser.add_argument("--measurement-target-reacquire-gate", type=float, default=defaults["measurement_target_reacquire_gate"])
+    parser.add_argument("--measurement-target-max-abs-x", type=float, default=defaults["measurement_target_max_abs_x"])
     parser.add_argument("--control-enabled", action="store_true", default=defaults["control_enabled"])
     parser.add_argument("--control-zone-x-min", type=float, default=defaults["control_zone_x_min"])
     parser.add_argument("--control-zone-x-max", type=float, default=defaults["control_zone_x_max"])
@@ -1348,6 +1728,7 @@ def build_arg_parser(defaults: Dict[str, object]) -> argparse.ArgumentParser:
     parser.add_argument("--control-approach-speed-threshold", type=float, default=defaults["control_approach_speed_threshold"])
     parser.add_argument("--control-stopped-speed-threshold", type=float, default=defaults["control_stopped_speed_threshold"])
     parser.add_argument("--control-clear-frames", type=int, default=defaults["control_clear_frames"])
+    parser.add_argument("--control-target-lock-frames", type=int, default=defaults["control_target_lock_frames"])
     parser.add_argument("--control-out-port", default=defaults["control_out_port"])
     parser.add_argument("--control-out-baudrate", type=int, default=defaults["control_out_baudrate"])
     parser.add_argument("--control-out-heartbeat-ms", type=int, default=defaults["control_out_heartbeat_ms"])
@@ -1423,6 +1804,9 @@ def main() -> None:
             max_misses=args.max_misses,
             min_hits=args.min_hits,
             report_miss_tolerance=args.report_miss_tolerance,
+            measurement_target_lock_frames=args.measurement_target_lock_frames,
+            measurement_target_reacquire_gate=args.measurement_target_reacquire_gate,
+            measurement_target_max_abs_x=args.measurement_target_max_abs_x,
             control_enabled=args.control_enabled,
             control_zone_x_min=args.control_zone_x_min,
             control_zone_x_max=args.control_zone_x_max,
@@ -1437,6 +1821,7 @@ def main() -> None:
             control_approach_speed_threshold=args.control_approach_speed_threshold,
             control_stopped_speed_threshold=args.control_stopped_speed_threshold,
             control_clear_frames=args.control_clear_frames,
+            control_target_lock_frames=args.control_target_lock_frames,
             control_out_port=args.control_out_port,
             control_out_baudrate=args.control_out_baudrate,
             control_out_heartbeat_ms=args.control_out_heartbeat_ms,

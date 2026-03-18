@@ -3,7 +3,7 @@
     "snr_threshold": 110.0,
     "max_noise": null,
     "min_range": 0.0,
-    "max_range": 3.0,
+    "max_range": 3.5,
     "filter_x_min": null,
     "filter_x_max": null,
     "filter_y_min": null,
@@ -35,19 +35,22 @@
   },
   "clustering": {
     "dbscan_eps": 0.35,
-    "dbscan_min_samples": 3,
+    "dbscan_min_samples": 2,
     "use_velocity_feature": false,
     "dbscan_velocity_weight": 0.25,
     "dbscan_adaptive_eps_bands": [
       { "r_min": 0.0, "r_max": 1.4, "eps": 0.22 },
-      { "r_min": 1.4, "r_max": null, "eps": 0.45 }
+      { "r_min": 1.4, "r_max": null, "eps": 0.50 }
     ]
   },
   "tracking": {
     "association_gate": 1.5,
     "max_misses": 8,
     "min_hits": 2,
-    "report_miss_tolerance": 0
+    "report_miss_tolerance": 2,
+    "measurement_target_lock_frames": 12,
+    "measurement_target_reacquire_gate": 0.9,
+    "measurement_target_max_abs_x": 1.25
   },
   "control": {
     "control_enabled": false,
@@ -64,6 +67,7 @@
     "control_approach_speed_threshold": 0.1,
     "control_stopped_speed_threshold": 0.05,
     "control_clear_frames": 3,
+    "control_target_lock_frames": 6,
     "control_out_port": null,
     "control_out_baudrate": 115200,
     "control_out_heartbeat_ms": 200

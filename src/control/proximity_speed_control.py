@@ -114,6 +114,9 @@ class ControlDecision:
     speed_ratio: float
     primary_event: str
     track_id: Optional[int]
+    target_x: Optional[float]
+    target_y: Optional[float]
+    target_z: Optional[float]
     zone_distance_m: Optional[float]
     closing_speed_mps: Optional[float]
     inside_zone: bool
@@ -137,6 +140,7 @@ class ProximitySpeedController:
         approach_speed_threshold: float = 0.1,
         stationary_speed_threshold: float = 0.05,
         clear_frames_required: int = 3,
+        target_lock_frames: int = 6,
     ):
         if slow_distance < 0.0 or stop_distance < 0.0 or resume_distance < 0.0:
             raise ValueError("Distances must be >= 0.0")
@@ -148,6 +152,8 @@ class ProximitySpeedController:
             raise ValueError("slow_speed_ratio must be in [0, 1]")
         if clear_frames_required < 1:
             raise ValueError("clear_frames_required must be >= 1")
+        if target_lock_frames < 0:
+            raise ValueError("target_lock_frames must be >= 0")
 
         self.control_zone = control_zone
         self.slow_distance = slow_distance
@@ -157,10 +163,13 @@ class ProximitySpeedController:
         self.approach_speed_threshold = approach_speed_threshold
         self.stationary_speed_threshold = stationary_speed_threshold
         self.clear_frames_required = clear_frames_required
+        self.target_lock_frames = int(target_lock_frames)
 
         self._last_command = "RESUME"
         self._last_primary_event = "CLEAR"
         self._clear_frames = clear_frames_required
+        self._locked_track_id: Optional[int] = None
+        self._lock_frames_remaining = 0
 
     def _assess_track(self, track: object) -> TrackAssessment:
         x_val = _get_value(track, "x")
@@ -208,11 +217,37 @@ class ProximitySpeedController:
             assessment.speed_mps,
         )
 
+    def _select_candidate(self, assessments: List[TrackAssessment]) -> Optional[TrackAssessment]:
+        if not assessments:
+            if self._locked_track_id is not None:
+                if self._lock_frames_remaining > 0:
+                    self._lock_frames_remaining -= 1
+                else:
+                    self._locked_track_id = None
+            return None
+
+        if self._locked_track_id is not None:
+            for assessment in assessments:
+                if assessment.track_id == self._locked_track_id:
+                    self._lock_frames_remaining = self.target_lock_frames
+                    return assessment
+
+            if self._lock_frames_remaining > 0:
+                self._lock_frames_remaining -= 1
+            else:
+                self._locked_track_id = None
+
+        candidate = assessments[0]
+        if candidate.track_id is not None and self.target_lock_frames > 0:
+            self._locked_track_id = candidate.track_id
+            self._lock_frames_remaining = self.target_lock_frames
+
+        return candidate
+
     def update(self, tracks: Iterable[object]) -> ControlDecision:
         assessments = [self._assess_track(track) for track in tracks]
         assessments.sort(key=self._sort_key)
-
-        candidate = assessments[0] if assessments else None
+        candidate = self._select_candidate(assessments)
 
         if candidate is None:
             self._clear_frames += 1
@@ -235,6 +270,9 @@ class ProximitySpeedController:
                 speed_ratio=speed_ratio,
                 primary_event=primary_event,
                 track_id=None,
+                target_x=None,
+                target_y=None,
+                target_z=None,
                 zone_distance_m=None,
                 closing_speed_mps=None,
                 inside_zone=False,
@@ -297,6 +335,9 @@ class ProximitySpeedController:
             speed_ratio=speed_ratio,
             primary_event=primary_event,
             track_id=candidate.track_id,
+            target_x=candidate.x,
+            target_y=candidate.y,
+            target_z=candidate.z,
             zone_distance_m=candidate.zone_distance_m,
             closing_speed_mps=candidate.closing_speed_mps,
             inside_zone=candidate.inside_zone,

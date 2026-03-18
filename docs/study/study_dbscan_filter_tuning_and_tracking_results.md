@@ -1,370 +1,453 @@
-# DBSCAN / Filter Tuning and Tracking Result Study
+# DBSCAN / Filter / Tracking / Control Tuning Study
 
-## 1. 문서 목적
+## 1. Purpose
 
-이 문서는 2026-03-18 기준으로 진행한 아래 작업을 한 번에 정리하기 위한 study note이다.
+This note summarizes the tuning work performed between 2026-03-18 and 2026-03-19 for:
 
-- `DBSCAN` 클러스터링을 거리 구간별 adaptive 방식으로 보완한 내용
-- `filter` 파라미터를 조정하면서 로그가 어떻게 달라졌는지
-- 객체 추정 결과가 어느 정도까지 안정화되었는지
-- 사람이 레이더 정면에서 앞뒤로 왕복할 때 거리 추적이 실제로 어떻게 보였는지
+- radar point filtering
+- adaptive DBSCAN clustering
+- tracker continuity
+- representative target selection for control
+- control-oriented measurement logging
 
-핵심 질문은 다음과 같다.
+The goal is to record:
 
-1. 어떤 파라미터를 바꿨는가
-2. 그 파라미터가 어디에 작용하는가
-3. 로그 지표가 어떻게 변했는가
-4. 현재 상태를 "객체 추정이 꽤 된다"고 볼 수 있는가
+- what was changed
+- why it was changed
+- how the logs changed
+- how much the pipeline improved
+- what remains to be done
 
 ---
 
-## 2. 이번 변경의 핵심
+## 2. Main Code Changes
 
 ### 2.1 `src/cluster/dbscan_cluster.py`
 
-기존 고정 `eps` DBSCAN에 거리 구간별 adaptive `eps`를 적용했다.
+The clustering module was upgraded from a single fixed-`eps` DBSCAN to range-band adaptive DBSCAN.
 
-현재 기본 구조:
+Main additions:
 
-- `0.0 ~ 1.4m -> eps = 0.22`
-- `1.4m 이상 -> eps = 0.45`
-- `min_samples = 3`
-
-추가 보완:
-
-- adaptive band 경계에서 같은 물체가 둘로 쪼개지는 현상을 줄이기 위한 boundary merge
-- adaptive band 바깥 점이 fallback으로 처리될 때 경고 가능 구조
-- 기존 출력 필드 유지
-  - `x`, `y`, `z`, `v`, `size`, `confidence`, `label`
-- 추가 출력 필드
-  - `range_band`, `eps_used`, `min_samples_used`, `boundary_merged`
-
-### 2.2 `config/runtime_params.json`, `src/runtime_params.py`
-
-공용 런타임 파라미터 기본값을 아래 방향으로 조정했다.
-
-- `snr_threshold`
-- `dbscan_min_samples`
 - `dbscan_adaptive_eps_bands`
-- `right_rail_padding`
+- separate `eps` values for near and far range bands
+- boundary merge logic to reduce split clusters near band boundaries
+- extra cluster metadata:
+  - `range_band`
+  - `eps_used`
+  - `min_samples_used`
+  - `boundary_merged`
 
-최종적으로 현재 기준값으로 남긴 값:
+Current default bands:
+
+```json
+[
+  { "r_min": 0.0, "r_max": 1.4, "eps": 0.22 },
+  { "r_min": 1.4, "r_max": null, "eps": 0.50 }
+]
+```
+
+### 2.2 `config/runtime_params.json` and `src/runtime_params.py`
+
+Shared runtime defaults were tuned repeatedly to fit the actual logs.
+
+Current baseline values:
 
 ```json
 {
   "snr_threshold": 110.0,
-  "max_range": 3.0,
-  "dbscan_min_samples": 3,
+  "max_range": 3.5,
+  "dbscan_min_samples": 2,
   "dbscan_adaptive_eps_bands": [
     { "r_min": 0.0, "r_max": 1.4, "eps": 0.22 },
-    { "r_min": 1.4, "r_max": null, "eps": 0.45 }
+    { "r_min": 1.4, "r_max": null, "eps": 0.50 }
   ],
   "right_rail_padding": 0.05,
-  "disable_near_front_keepout": false
+  "report_miss_tolerance": 2,
+  "measurement_target_lock_frames": 12,
+  "measurement_target_reacquire_gate": 0.9,
+  "measurement_target_max_abs_x": 1.25,
+  "control_target_lock_frames": 6
 }
 ```
 
 ### 2.3 `src/parser/runtime_pipeline.py`
 
-기존 로그는 프레임 전체의 `filtered_range_min`, `filtered_range_max`만 남겼다.
-이 방식은 "그 프레임에 남은 모든 점 중 최소/최대 거리"이므로, 사람 1명의 접근/이탈을 보기에는 한계가 있었다.
+The runtime pipeline was extended with richer target summaries and new representative-target logic.
 
-그래서 다음 컬럼을 새로 추가했다.
+Added logging groups:
 
-- `primary_cluster_label`
-- `primary_cluster_range_m`
-- `primary_cluster_size`
-- `primary_cluster_confidence`
-- `primary_track_id`
-- `primary_track_range_m`
-- `primary_track_confidence`
+- `primary_cluster_*`
+- `primary_track_*`
+- `persistent_track_*`
+- `measurement_target_*`
+- `control_target_*`
 
-선정 기준:
-
-- `primary_cluster`: 가장 가까운 cluster
-- `primary_track`: 가장 가까운 track
-
-텍스트 로그에도 다음과 같은 요약을 추가했다.
+Important pipeline change:
 
 ```text
-primary_cluster={label=0, range=0.98m, size=11} primary_track={id=1, range=0.94m, hits=2}
+tracks
+  -> measurement target selection
+  -> control input / control target
+```
+
+Control is no longer driven only by "nearest track". It now uses a separately selected measurement target.
+
+### 2.4 `src/control/proximity_speed_control.py`
+
+The control module was extended with target lock behavior.
+
+Main additions:
+
+- `target_lock_frames`
+- lock persistence across frames
+- selected target position fields in `ControlDecision`
+
+---
+
+## 3. Parameter Roles and Observed Effects
+
+### 3.1 `snr_threshold`
+
+Role:
+
+- removes low-SNR points
+
+Observed effect:
+
+- too low: too much noise remains
+- too high: valid points are lost
+
+Observed results:
+
+- `120` was too aggressive
+- `115` was still too aggressive
+- `110` gave the best balance in recent runs
+
+### 3.2 `max_range`
+
+Role:
+
+- upper bound of range filtering
+
+Observed effect:
+
+- too low: far target points are removed before clustering
+- higher values help far tracking, but may also admit more clutter
+
+Observed results:
+
+- `3.0` made far-range tracking fragile
+- `3.5` improved `measurement_target_y` and `measurement_target_range_m` maxima
+
+### 3.3 `dbscan_min_samples`
+
+Role:
+
+- minimum number of points required to form a cluster
+
+Observed effect:
+
+- larger values break far-range clusters more often
+- smaller values allow sparse clusters to survive
+
+Observed results:
+
+- `3` was too strict in far range
+- `2` improved continuity and reduced empty-track frames
+
+### 3.4 `dbscan_adaptive_eps_bands`
+
+Role:
+
+- applies different DBSCAN `eps` values to different range bands
+
+Observed effect:
+
+- near band reduces over-merge
+- far band helps sparse far-range points stay clustered
+
+Observed results:
+
+- near `0.22` stayed stable
+- far `0.45 -> 0.50` improved far-range retention
+
+### 3.5 `right_rail_padding`
+
+Role:
+
+- expands or shrinks right-rail keepout filtering
+
+Observed effect:
+
+- too large: valid points are removed together with clutter
+
+Observed results:
+
+- `0.15` was too aggressive
+- `0.05` restored filtered points, clusters, and tracks
+
+### 3.6 `report_miss_tolerance`
+
+Role:
+
+- allows a track to remain visible for a few missed frames
+
+Observed effect:
+
+- short dropouts no longer remove tracks immediately
+
+Observed results:
+
+- `0 -> 2` noticeably improved continuity
+
+### 3.7 `measurement_target_*`
+
+Role:
+
+- chooses a representative measurement target for both analysis and control
+
+Current parameters:
+
+- `measurement_target_lock_frames = 12`
+- `measurement_target_reacquire_gate = 0.9`
+- `measurement_target_max_abs_x = 1.25`
+
+Intent:
+
+- keep the same target across short gaps
+- reacquire near the last known position
+- reduce the chance of selecting a target that is too far off the forward axis
+
+---
+
+## 4. Log Trend Summary
+
+### 4.1 2026-03-18
+
+| run | main condition | avg_filtered_points | avg_clusters | avg_tracks | interpretation |
+| --- | --- | ---: | ---: | ---: | --- |
+| `213244` | early state | 30.013 | 3.488 | 3.430 | one person often split into 3+ clusters |
+| `215412` | `snr_threshold=120` | 11.753 | 2.131 | 2.077 | fewer clusters, but too many valid points removed |
+| `221238` | near-front keepout disabled | 5.365 | 0.674 | 0.607 | overall detection collapsed |
+| `222225` | `snr_threshold=110`, `right_rail_padding=0.05` | 13.435 | 1.820 | 1.737 | best balance on 2026-03-18 |
+| `223049` | `snr_threshold=115` | 9.113 | 1.064 | 0.968 | again too aggressive |
+| `225536` | `primary_*` logging added | 8.412 | 1.255 | 1.207 | distance trend visible, but `primary_track` not representative enough |
+
+### 4.2 2026-03-19
+
+| run | main change | avg_filtered_points | avg_clusters | avg_tracks | zero_track_frames | interpretation |
+| --- | --- | ---: | ---: | ---: | ---: | --- |
+| `003440` | baseline before new representative target logic | 13.668 | 2.012 | 2.828 | 2 | many tracks available, but representative value was misleading |
+| `011052` | compare `persistent_track` vs `control_target` | 11.090 | 1.630 | 2.193 | 2 | `persistent` and `control` were more stable than `primary` |
+| `013947` | `measurement_target` introduced | 4.882 | 0.722 | 0.997 | 132 | representative range improved, but detection became sparse |
+| `015607` | `max_range = 3.5` | 4.668 | 0.695 | 0.858 | 148 | larger far-range maxima, but many gaps remained |
+| `020457` | `dbscan_min_samples = 2` | 4.567 | 0.900 | 1.119 | 66 | continuity improved significantly |
+| `021928` | `measurement_target_max_abs_x = 1.25` soft preference | 4.126 | 0.776 | 0.971 | 99 | slight gain in max `y`, but weaker continuity |
+| `022853` | far `eps 0.45 -> 0.50` | 4.877 | 0.969 | 1.173 | 38 | best recent balance for far-range retention and continuity |
+
+---
+
+## 5. Representative Target Selection Comparison
+
+### 5.1 `primary_track`
+
+Strength:
+
+- simple
+
+Problem:
+
+- often selects only the nearest target
+- frequently under-represented the real `0.5m ~ 3m` walking distance
+
+Conclusion:
+
+- not suitable as the main control input
+
+### 5.2 `persistent_track`
+
+Strength:
+
+- useful for continuity analysis
+- often more stable than `primary_track`
+
+Problem:
+
+- may keep an old or less relevant track alive
+- not always the best control target
+
+### 5.3 `control_target`
+
+Strength:
+
+- directly reflects what control uses
+- more stable due to lock behavior
+
+Problem:
+
+- if measurement selection is wrong, control target also becomes wrong
+
+### 5.4 `measurement_target`
+
+Strength:
+
+- designed to serve both analysis and control
+- uses lock, reacquire, and x-bias rules
+
+Current judgment:
+
+- much better than `primary_track`
+- the right place to feed the control stage
+
+---
+
+## 6. Current Log Interpretation
+
+The most meaningful recent control-oriented log is:
+
+- [frames_20260319_022853.log](/c:/Users/sy201/U/4-1/C/radar-tracking-system/evidence/runtime_logs/frames_20260319_022853.log)
+- [frames_20260319_022853.csv](/c:/Users/sy201/U/4-1/C/radar-tracking-system/evidence/runtime_logs/frames_20260319_022853.csv)
+
+Key values:
+
+- `avg_tracks = 1.173`
+- `zero_track_frames = 38`
+- `measurement_rows = 549`
+- `measurement_y_max = 3.307`
+- `measurement_range_max = 3.688`
+
+Far-range retention:
+
+- `filtered_range_max >= 2.0m`: 245 frames, measurement present in 237
+- `>= 2.5m`: 161 frames, measurement present in 153
+- `>= 3.0m`: 82 frames, measurement present in 74
+
+Meaning:
+
+- the `2m ~ 3m` band is now retained most of the time
+- the far range is no longer collapsing as often as before
+- the latest setup is the most promising recent state for control-oriented use
+
+Remaining issues:
+
+- `measurement_id_switches = 27`
+- `parse_failures = 15`
+- `dropped_frames_estimate = 16`
+- some selected targets still have large `x` offsets
+
+---
+
+## 7. Current Assessment
+
+### 7.1 Object Estimation
+
+- forward/backward distance change is clearly detectable
+- repeated `0.5m ~ 3m` walking trends can be observed in logs
+- this is still not a perfect one-person one-track trajectory system
+
+### 7.2 Control Input Readiness
+
+- the system is approaching usable quality for `slow / stop / resume` demos
+- measurement/control targets now survive far range much better than before
+
+### 7.3 Limitations
+
+- parse failures and dropped frames still hurt continuity
+- track ID switching still exists
+- some representative targets are still too far off-axis
+- this is not yet safety-grade control
+
+Summary:
+
+- demo / capstone control input: plausible
+- robust prototype control: close, but more validation needed
+- safety-critical control: not ready
+
+---
+
+## 8. Recommended Baseline
+
+Current recommended baseline:
+
+```json
+{
+  "snr_threshold": 110.0,
+  "max_range": 3.5,
+  "dbscan_min_samples": 2,
+  "dbscan_adaptive_eps_bands": [
+    { "r_min": 0.0, "r_max": 1.4, "eps": 0.22 },
+    { "r_min": 1.4, "r_max": null, "eps": 0.50 }
+  ],
+  "right_rail_padding": 0.05,
+  "report_miss_tolerance": 2,
+  "measurement_target_lock_frames": 12,
+  "measurement_target_reacquire_gate": 0.9,
+  "measurement_target_max_abs_x": 1.25,
+  "control_target_lock_frames": 6
+}
 ```
 
 ---
 
-## 3. 파라미터별 의미와 작용 방식
+## 9. Next Work
 
-### 3.1 `snr_threshold`
+### 9.1 Priority 1: parse / serial stability
 
-역할:
+Reason:
 
-- `noise_filter.preprocess_points()`에서 low-SNR point를 제거한다.
+- recent logs still show `parse_failures` and dropped frames
 
-영향:
+Needed work:
 
-- 값을 낮추면 점이 많이 살아남는다.
-- 값을 높이면 노이즈를 더 세게 제거하지만, 유효한 점도 같이 죽을 수 있다.
+- check cable and serial stability
+- inspect whether drops cluster around specific periods
 
-이번 실험 결론:
+### 9.2 Priority 2: stronger x-bias for measurement target
 
-- `120`은 너무 강했다.
-- `115`도 직전 최적점보다 과했다.
-- `110`이 현재 로그 기준 가장 균형이 좋았다.
+Reason:
 
-### 3.2 `dbscan_adaptive_eps_bands`
+- some representative targets still drift too far laterally
 
-역할:
+Needed work:
 
-- 거리대별로 다른 `eps`를 적용한다.
+- test tighter `measurement_target_max_abs_x`
+- consider moving from soft preference toward a harder gate
 
-의도:
+### 9.3 Priority 3: conveyor control threshold validation
 
-- 가까운 거리에서는 `eps`를 너무 크게 쓰지 않아 과도한 병합을 줄임
-- 먼 거리에서는 더 큰 `eps`로 성긴 점도 객체로 묶이게 함
+Reason:
 
-현재 적용:
+- detection quality is now improving, so the next step is actual belt behavior
 
-- near band `0.22`
-- far band `0.45`
+Needed work:
 
-이번 실험 결론:
+- validate `slow_distance`, `stop_distance`, and `resume_distance`
+- check for over-sensitive slowing or stopping
 
-- far band `0.45`는 현재 정면 접근 실험에서 꽤 잘 작동했다.
-- 현재 문제는 DBSCAN 자체보다는 filter 쪽 민감도가 더 큰 영향을 주는 경우가 많았다.
+### 9.4 Priority 4: reporting and presentation summary
 
-### 3.3 `dbscan_min_samples`
+Recommended metrics to show:
 
-역할:
-
-- cluster로 인정할 최소 point 수
-
-영향:
-
-- 너무 크면 점이 적은 프레임에서 cluster를 놓친다.
-- 너무 작으면 노이즈 점도 cluster가 될 수 있다.
-
-현재 값:
-
-- `3`
-
-판단:
-
-- 현재 환경에서는 `4`보다 `3`이 안정적이었다.
-
-### 3.4 `right_rail_padding`
-
-역할:
-
-- 우측 레일 keepout 박스의 여유 폭
-
-영향:
-
-- 값이 크면 레일 주변 점을 더 넓게 지운다.
-- 값이 작아지면 레일 근처의 유효한 점이 더 살아남는다.
-
-이번 실험 결론:
-
-- `0.15`에서는 keepout 제거량이 과했다.
-- `0.05`로 줄인 뒤 `filtered_points`, `clusters`, `tracks`가 눈에 띄게 회복됐다.
-
-### 3.5 `disable_near_front_keepout`
-
-역할:
-
-- 레이더 바로 앞 박스를 keepout으로 쓸지 여부
-
-이번 실험 결론:
-
-- `near_front`를 꺼도 좋아지지 않았다.
-- 오히려 `no_near_front_keepout` 실험에서는 전체 성능이 더 나빠졌다.
-- 따라서 현재 문제의 주원인은 `near_front keepout`이 아니었다.
+- `measurement_target_y`
+- `measurement_target_range_m`
+- `zero_track_frames`
+- measurement coverage rate in `2m+` bands
 
 ---
 
-## 4. 실험 로그 비교
+## 10. Final Summary
 
-### 4.1 주요 실험 ID
+The tuning process followed this sequence:
 
-- `20260318_213244`
-- `20260318_215412`
-- `20260318_221238`
-- `20260318_222225`
-- `20260318_223049`
-- `20260318_225536`
+1. reduce over-filtering and under-filtering
+2. add adaptive DBSCAN
+3. improve far-range cluster/track survival with `max_range`, `dbscan_min_samples`, and far `eps`
+4. replace `primary_track` with `measurement_target` as the main representative value
+5. connect control logic to the measurement target path
 
-### 4.2 실험별 변화 요약
+Current conclusion:
 
-| run_id | 설정 특징 | avg_filtered_points | avg_clusters | avg_tracks | 해석 |
-| --- | --- | ---: | ---: | ---: | --- |
-| `20260318_213244` | 점이 너무 많이 살아남던 상태 | 30.013 | 3.488 | 3.430 | 사람 1명을 3개 이상으로 자주 쪼갬 |
-| `20260318_215412` | `snr_threshold=120`, adaptive 강화 | 11.753 | 2.131 | 2.077 | cluster 수는 줄었지만 과필터링 시작 |
-| `20260318_221238` | `--disable-near-front-keepout` | 5.365 | 0.674 | 0.607 | 가장 나쁨, near-front가 원인 아님 확인 |
-| `20260318_222225` | `snr_threshold=110`, `right_rail_padding=0.05` | 13.435 | 1.820 | 1.737 | 가장 균형 좋음 |
-| `20260318_223049` | `snr_threshold=115` | 9.113 | 1.064 | 0.968 | 다시 과필터링 방향 |
-| `20260318_225536` | `110` 유지 + primary target logging | 8.412 | 1.255 | 1.207 | 거리 추적 해석용 로그 확보 |
-
-### 4.3 해석
-
-실험 결과는 다음처럼 정리할 수 있다.
-
-- 초기 상태는 `filtered_points`가 너무 많아 객체가 잘게 쪼개졌다.
-- `120`은 cluster 수를 줄이긴 했지만 유효한 점까지 많이 죽였다.
-- `near_front keepout`을 끈 실험은 실패였다.
-- `110 + right_rail_padding=0.05` 조합이 가장 안정적이었다.
-- `115`는 다시 다소 과한 값이었다.
-
-즉 현재 기준 최적점은 다음과 같다.
-
-- `snr_threshold = 110`
-- `dbscan_min_samples = 3`
-- near/far adaptive `eps = 0.22 / 0.45`
-- `right_rail_padding = 0.05`
-- `near_front keepout = on`
-
----
-
-## 5. 객체 위치 추적 결과 정리
-
-### 5.1 이전 방식의 한계
-
-기존에는 아래 값으로만 거리 추세를 봤다.
-
-- `filtered_range_min`
-- `filtered_range_max`
-
-하지만 이 값은 "프레임 전체 점 중 최소/최대 거리"라서, 사람 1명의 움직임과 배경/레일 반사가 섞이면 해석이 어렵다.
-
-### 5.2 `primary_cluster_range_m`, `primary_track_range_m` 기준 결과
-
-최신 로그 `20260318_225536` 기준:
-
-- `primary_track_range_m`
-  - 최소: `0.289 m`
-  - 중앙값: `0.950 m`
-  - 최대: `2.726 m`
-- `primary_cluster_range_m`
-  - 최소: `0.453 m`
-  - 중앙값: `1.096 m`
-  - 최대: `2.907 m`
-
-이 값은 다음을 의미한다.
-
-- 레이더 정면에서 매우 가까운 구간도 실제로 잡혔다.
-- 약 3m 근처의 먼 구간도 실제로 잡혔다.
-- 즉 거리 범위 자체는 꽤 잘 반영되었다.
-
-### 5.3 "멀어졌다가 가까워졌다"가 잘 보였는가
-
-이번 실험에서 사용자는 한 번만 접근/이탈한 것이 아니라, 레이더 정면에서 앞뒤로 반복 왕복했다.
-
-그 기준으로 보면 `primary_track_range_m`은 꽤 그럴듯한 값을 보였다.
-
-대표 예시:
-
-- `11.85s -> 0.289m`
-- `25.35s -> 2.726m`
-- `30.45s -> 0.340m`
-- `50.45s -> 2.710m`
-- `54.85s -> 0.459m`
-- `59.35s -> 2.701m`
-
-해석:
-
-- 거리 값이 엉망으로 무작위 점프한 것보다는
-- 실제 반복 왕복 움직임을 꽤 잘 반영한 패턴으로 볼 수 있다.
-
-다만 완전히 매끈한 단일 곡선은 아니다.
-
-이유:
-
-- `primary_track`은 "그 순간 가장 가까운 track"이다.
-- track ID가 바뀌면 거리 곡선도 점프한다.
-- 즉 "한 사람 한 track의 완전한 연속 궤적"이라기보다 "그 프레임에서 대표 대상의 거리"에 가깝다.
-
-### 5.4 현재 수준에 대한 판단
-
-현재 로그 기준으로는 다음처럼 평가할 수 있다.
-
-- 거리 변화 감지: 꽤 잘 됨
-- 객체 후보 생성: 실용적으로 쓸 만한 수준
-- tracker 유지: 어느 정도 됨
-- 완전히 안정적인 1인 1-track 고정: 아직 부족함
-
-따라서 프로젝트 목적이
-
-- 사람 접근 감지
-- 위험 구간 진입 확인
-- 컨베이어 감속 / 정지 트리거
-
-라면, 현재 수준은 시연용/프로토타입용으로 충분히 의미가 있다.
-
----
-
-## 6. 현재 결론
-
-### 6.1 기술적 결론
-
-현재 파이프라인은 아래 수준까지는 달성했다.
-
-- `parser -> filter -> adaptive DBSCAN -> tracker` 흐름이 안정적으로 동작
-- 정면 거리 변화가 로그에 반영됨
-- 객체를 전혀 못 잡는 상태는 아님
-- 과도한 분할도 초기 상태보다 줄었음
-
-### 6.2 가장 적절한 기준값
-
-현재 study 기준 추천 baseline:
-
-- `snr_threshold = 110`
-- `dbscan_min_samples = 3`
-- `dbscan_adaptive_eps_bands = [(0.0~1.4, 0.22), (1.4~, 0.45)]`
-- `right_rail_padding = 0.05`
-- `near_front keepout = on`
-
-### 6.3 아직 남은 한계
-
-- 대표 대상이 프레임마다 바뀌면 거리 곡선이 점프할 수 있음
-- 사람 1명을 항상 1 track으로 유지하지는 못함
-- 접근/이탈 분석에는 충분하지만, 정밀 trajectory 분석에는 추가 보완이 필요함
-
----
-
-## 7. 다음 단계 제안
-
-### 7.1 우선순위 1
-
-`primary_track` 대신 "가장 오래 유지된 track_id"를 기준으로 거리 곡선을 기록
-
-효과:
-
-- 한 사람의 연속 궤적처럼 보이는 로그 확보 가능
-
-### 7.2 우선순위 2
-
-single-person 실험용 mode 추가
-
-예:
-
-- 가장 큰 cluster 하나만 사용
-- 또는 confidence / hits가 가장 높은 track 하나만 사용
-
-효과:
-
-- 시연/평가 실험에서 거리 곡선이 훨씬 해석하기 쉬워짐
-
-### 7.3 우선순위 3
-
-필요하면 viewer에도 primary target distance 표시 추가
-
-효과:
-
-- 로그를 열지 않고도 실시간으로 접근/이탈 정도를 확인 가능
-
----
-
-## 8. 요약 문장
-
-이번 튜닝 결과를 한 문장으로 요약하면 다음과 같다.
-
-> 거리 구간별 adaptive DBSCAN과 filter 파라미터 재조정을 통해, 초기보다 과도한 객체 분할을 줄이고 사람의 반복적인 접근/이탈 거리를 로그상에서 유의미하게 추적할 수 있는 수준까지 안정화하였다.
+- object estimation quality has improved to a meaningful level
+- the system is now reasonably promising for approach-based conveyor control demos
+- the main remaining bottlenecks are continuity, parse stability, and off-axis representative target selection
 
