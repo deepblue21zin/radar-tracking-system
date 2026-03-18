@@ -23,8 +23,14 @@
 현재 Python 파이프라인의 메인 entrypoint는 아래 파일이다.
 
 - `src/parser/tlv_parse_runner.py`
+- `src/parser/runtime_pipeline.py`
 
-이 파일 하나를 실행하면 내부에서 아래 모듈들을 순서대로 사용한다.
+역할 분리는 이렇게 이해하면 된다.
+
+- `tlv_parse_runner.py`: 기존 실행 명령과 import를 유지하는 호환 래퍼
+- `runtime_pipeline.py`: 실제 cfg 전송, UART 수신, parse, filter, cluster, track, control, logging 구현
+
+실행 시 내부에서 아래 모듈들을 순서대로 사용한다.
 
 - `src/parser/tlv_packet_parser.py`
 - `src/filter/noise_filter.py`
@@ -33,8 +39,13 @@
 - `src/control/proximity_speed_control.py`
 - `src/communication/control_protocol.py`
 
-즉 Python 파일들을 따로따로 실행하는 구조가 아니라,
-`tlv_parse_runner.py` 하나가 전체 파이프라인을 묶는 구조이다.
+반복 튜닝 기본값은 아래 파일에서 공통으로 관리한다.
+
+- `src/runtime_params.py`
+- `config/runtime_params.json`
+
+즉 사용자가 보는 실행 명령은 `tlv_parse_runner.py`지만,
+실구현은 `runtime_pipeline.py`가 전체 파이프라인을 묶는 구조이다.
 
 ### 2.2 STM32 쪽 파일
 아래 파일은 PC에서 실행하는 파일이 아니다.
@@ -110,11 +121,13 @@
 - `approaching`
 - `changed`
 
-## 3.3 `src/parser/tlv_parse_runner.py`
-기존 real-time parser runner를 제어 파이프라인까지 연결하도록 확장했다.
+## 3.3 `src/parser/runtime_pipeline.py`
+현재 real-time parser runner의 실제 구현은 이 파일에 있다.
 
 추가된 내용:
 
+- `send_config()` 이후 `time.sleep(0.2)` + `data_port.reset_input_buffer()` 적용
+- `--params-file` 기반 공용 기본값 로딩
 - control 관련 CLI 옵션 추가
 - runtime CSV 로그에 control 관련 컬럼 추가
 - `ControlZone`, `ProximitySpeedController` 초기화
@@ -127,6 +140,14 @@
 - `optional STM32 UART tx`
 
 가 추가된 상태이다.
+
+### 3.3.1 `src/parser/tlv_parse_runner.py`
+이 파일은 위 구현을 그대로 다시 export하는 호환 래퍼다.
+
+의미:
+
+- 기존 실행 명령을 바꾸지 않아도 된다.
+- 기존 import 경로를 쓰던 코드도 크게 안 깨진다.
 
 ## 3.4 `src/communication/control_protocol.py`
 Python에서 STM32로 보낼 제어 패킷 인코더/송신기를 추가했다.
@@ -170,7 +191,9 @@ STM32 쪽 수신/파싱/속도 갱신 예제를 추가했다.
 ## 4. 전체 런타임 플로우
 
 ## 4.1 설정/시작
-사용자가 `tlv_parse_runner.py`를 실행한다.
+사용자는 계속 `tlv_parse_runner.py`를 실행한다.
+
+다만 실제로 내부에서 main loop를 수행하는 구현은 `runtime_pipeline.py`다.
 
 입력 예:
 
@@ -182,12 +205,13 @@ STM32 쪽 수신/파싱/속도 갱신 예제를 추가했다.
 - optional STM32 output port
 
 ## 4.2 레이더 cfg 전송
-`tlv_parse_runner.py`는 CLI 포트로 cfg 파일의 명령을 한 줄씩 전송한다.
+`runtime_pipeline.py`는 CLI 포트로 cfg 파일의 명령을 한 줄씩 전송한다.
 
 목적:
 
 - radar profile 설정
 - sensing 동작 시작
+- startup stale byte를 줄이기 위해 `send_config()` 뒤에 잠깐 대기 후 `data_port.reset_input_buffer()`를 적용한다.
 
 ## 4.3 UART raw frame 수신
 Data 포트에서는 raw bytes가 계속 들어온다.
@@ -368,7 +392,7 @@ STM32 쪽에서는
 필요하면 `z` 범위도 추가 가능하다.
 
 ## 5.2 기본 파라미터
-현재 기본값은 아래와 같다.
+현재 기본값은 `config/runtime_params.json` 기준으로 아래와 같다.
 
 - `slow_distance = 1.5`
 - `stop_distance = 0.4`
@@ -447,10 +471,22 @@ source .venv/Scripts/activate
 또는 이미 `.venv`의 `python`이 PATH에 잡혀 있으면 바로 `python`을 써도 된다.
 
 ## 6.3 실행 명령
+기본 실행 명령은 계속 wrapper entrypoint를 사용한다.
+
 ### 기본 실행
 
 ```bash
 python src/parser/tlv_parse_runner.py --cli-port COM6 --data-port COM5 --config config/profile_3d.cfg
+```
+
+### 공용 파라미터 파일 기반 실행
+
+```bash
+python src/parser/tlv_parse_runner.py \
+  --cli-port COM6 \
+  --data-port COM5 \
+  --config config/profile_3d.cfg \
+  --params-file config/runtime_params.json
 ```
 
 ### control decision 포함 실행
@@ -481,6 +517,12 @@ python src/parser/tlv_parse_runner.py \
   --control-zone-y-max 1.2 \
   --control-out-port COM7
 ```
+
+정리:
+
+- 반복해서 바꾸는 값은 `config/runtime_params.json`에 둔다.
+- 특정 실험값만 CLI로 덮어쓴다.
+- `src/visualization/live_rail_viewer.py`도 같은 `--params-file`을 지원한다.
 
 ---
 
@@ -536,8 +578,9 @@ tracker의 `dt` 계산은 전체 track별로 독립적이지 않고,
 
 ## 8. 발표/시연 관점에서 기억할 포인트
 
-- Python 메인 실행은 `tlv_parse_runner.py` 하나다.
-- 다른 Python 모듈은 이 파일이 내부에서 자동으로 import해서 쓴다.
+- 사용자가 실행하는 커맨드는 `tlv_parse_runner.py` 하나로 유지된다.
+- 실제 런타임 구현은 `runtime_pipeline.py`에 있다.
+- 반복 튜닝 파라미터는 `config/runtime_params.json`에서 runner/viewer가 공용으로 읽는다.
 - STM32 C 파일은 별도로 STM32 프로젝트에 넣어 빌드/업로드해야 한다.
 - 현재 시스템 구조는 `PC가 판단`, `STM32가 실제 구동`이다.
 - 디버깅은 반드시 `raw -> filtered -> clusters -> tracks -> control` 순서로 나눠서 본다.
