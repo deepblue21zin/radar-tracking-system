@@ -45,10 +45,12 @@ TLV는 `Type-Length-Value`의 약자다.
 `센서 인터페이스의 신뢰성과 실시간성을 책임지는 핵심 모듈`로 본다.
 
 ## 4. 현재 코드 구조를 먼저 이해하자
-현재 파서 관련 핵심 파일은 2개다.
+현재 파서 관련 핵심 파일은 4개다.
 
 - `src/parser/tlv_packet_parser.py`
+- `src/parser/runtime_pipeline.py`
 - `src/parser/tlv_parse_runner.py`
+- `src/runtime_params.py`
 
 역할은 이렇게 나뉜다.
 
@@ -65,7 +67,7 @@ TLV는 `Type-Length-Value`의 약자다.
 
 쉽게 말하면 `바이트 해석기`다.
 
-### 4.2 `tlv_parse_runner.py`
+### 4.2 `runtime_pipeline.py`
 이 파일은 실제 레이더 포트를 열고, 버퍼를 관리하면서 프레임 단위로 파서를 호출한다.
 
 주요 역할:
@@ -78,6 +80,27 @@ TLV는 `Type-Length-Value`의 약자다.
 - `ParsedFrame`으로 정리해서 다음 모듈로 전달
 
 쉽게 말하면 `실시간 입력 관리자`다.
+
+### 4.3 `tlv_parse_runner.py`
+이 파일은 기존 실행 명령과 import를 유지하기 위한 호환 래퍼다.
+
+핵심 역할:
+
+- `runtime_pipeline.py`의 `main`, `run_realtime`, `MMWaveSerialReader` 등을 다시 export
+- 기존 `python src/parser/tlv_parse_runner.py ...` 명령을 계속 지원
+
+즉 "실구현"은 아니고, `entrypoint compatibility layer`에 가깝다.
+
+### 4.4 `src/runtime_params.py`
+이 파일은 `config/runtime_params.json`을 읽어 공용 기본값을 만든다.
+
+핵심 역할:
+
+- runner/viewer 공용 기본 파라미터 정의
+- `--params-file`로 JSON override 로딩
+- 알 수 없는 키 검증
+
+즉 반복 튜닝 값 관리 지점이다.
 
 ## 5. 데이터가 실제로 흐르는 순서
 
@@ -414,17 +437,15 @@ python src/parser/tlv_parse_runner.py --help
 ## 14. 지금 당장 추천하는 실행/확인 방법
 
 ### 실행 확인
-가장 안정적인 방식은 아래처럼 module 실행이다.
-
-```bash
-python -m src.parser.tlv_parse_runner --help
-```
-
-직접 실행도 가능하다.
+현재 공식 실행 명령은 아래 wrapper entrypoint다.
 
 ```bash
 python src/parser/tlv_parse_runner.py --help
 ```
+
+실제로 호출되는 구현은 `src/parser/runtime_pipeline.py` 쪽이다.
+
+반복 튜닝 값은 `config/runtime_params.json`에서 먼저 조정하고, 실험용 override만 CLI로 주는 흐름을 권장한다.
 
 ### 개발 중 확인할 로그
 - `frame_number`
