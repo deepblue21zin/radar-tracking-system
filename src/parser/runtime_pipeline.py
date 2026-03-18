@@ -2,6 +2,7 @@
 
 import argparse
 import csv
+import math
 import sys
 import time
 import traceback
@@ -186,6 +187,13 @@ class CsvRunLogger:
                 "raw_range_max",
                 "filtered_range_min",
                 "filtered_range_max",
+                "primary_cluster_label",
+                "primary_cluster_range_m",
+                "primary_cluster_size",
+                "primary_cluster_confidence",
+                "primary_track_id",
+                "primary_track_range_m",
+                "primary_track_confidence",
                 "removed_snr",
                 "removed_noise",
                 "removed_range",
@@ -540,6 +548,73 @@ def format_track_preview(tracks: List[object], limit: int) -> str:
             + "}"
         )
     return "[" + ", ".join(preview_items) + "]"
+
+
+def _cluster_range_m(cluster: dict) -> float:
+    x = float(cluster.get("x", 0.0))
+    y = float(cluster.get("y", 0.0))
+    z = float(cluster.get("z", 0.0))
+    return math.sqrt((x * x) + (y * y) + (z * z))
+
+
+def _track_range_m(track: object) -> float:
+    x = float(getattr(track, "x", 0.0))
+    y = float(getattr(track, "y", 0.0))
+    return math.hypot(x, y)
+
+
+def select_primary_cluster(clusters: List[dict]) -> Optional[dict]:
+    if not clusters:
+        return None
+
+    return min(
+        clusters,
+        key=lambda cluster: (
+            _cluster_range_m(cluster),
+            -float(cluster.get("confidence", 0.0)),
+            -int(cluster.get("size", 0)),
+        ),
+    )
+
+
+def select_primary_track(tracks: List[object]) -> Optional[object]:
+    if not tracks:
+        return None
+
+    return min(
+        tracks,
+        key=lambda track: (
+            _track_range_m(track),
+            -float(getattr(track, "confidence", 0.0)),
+            getattr(track, "track_id", 0),
+        ),
+    )
+
+
+def format_primary_target_summary(primary_cluster: Optional[dict], primary_track: Optional[object]) -> str:
+    parts: List[str] = []
+
+    if primary_cluster is not None:
+        parts.append(
+            "primary_cluster="
+            + "{"
+            + f"label={primary_cluster.get('label', -1)}, "
+            + f"range={_cluster_range_m(primary_cluster):.2f}m, "
+            + f"size={int(primary_cluster.get('size', 0))}"
+            + "}"
+        )
+
+    if primary_track is not None:
+        parts.append(
+            "primary_track="
+            + "{"
+            + f"id={getattr(primary_track, 'track_id', -1)}, "
+            + f"range={_track_range_m(primary_track):.2f}m, "
+            + f"hits={getattr(primary_track, 'hits', 0)}"
+            + "}"
+        )
+
+    return " ".join(parts)
 
 
 def format_frame_summary(
@@ -1019,6 +1094,10 @@ def run_realtime(
                         cluster_preview = format_cluster_preview(clusters, coord_preview_count)
                         track_preview = format_track_preview(tracks, coord_preview_count)
 
+                    primary_cluster = select_primary_cluster(clusters)
+                    primary_track = select_primary_track(tracks)
+                    primary_target_summary = format_primary_target_summary(primary_cluster, primary_track)
+
                     frame_summary = format_frame_summary(
                         frame=frame,
                         frame_gap=frame_gap,
@@ -1031,6 +1110,8 @@ def run_realtime(
                     )
                     emit_log(frame_summary)
                     emit_log(f"  {filter_stats_summary}")
+                    if primary_target_summary:
+                        emit_log(f"  {primary_target_summary}")
                     if filter_sample_preview:
                         emit_log(f"  filter_sample={filter_sample_preview}")
                     if filtered_preview:
@@ -1068,6 +1149,21 @@ def run_realtime(
                             "raw_range_max": round(filter_stats.raw_range_max, 3) if filter_stats.raw_range_max is not None else "",
                             "filtered_range_min": round(filter_stats.filtered_range_min, 3) if filter_stats.filtered_range_min is not None else "",
                             "filtered_range_max": round(filter_stats.filtered_range_max, 3) if filter_stats.filtered_range_max is not None else "",
+                            "primary_cluster_label": primary_cluster.get("label", "") if primary_cluster is not None else "",
+                            "primary_cluster_range_m": round(_cluster_range_m(primary_cluster), 3) if primary_cluster is not None else "",
+                            "primary_cluster_size": int(primary_cluster.get("size", 0)) if primary_cluster is not None else "",
+                            "primary_cluster_confidence": (
+                                round(float(primary_cluster.get("confidence", 0.0)), 3)
+                                if primary_cluster is not None
+                                else ""
+                            ),
+                            "primary_track_id": getattr(primary_track, "track_id", "") if primary_track is not None else "",
+                            "primary_track_range_m": round(_track_range_m(primary_track), 3) if primary_track is not None else "",
+                            "primary_track_confidence": (
+                                round(float(getattr(primary_track, "confidence", 0.0)), 3)
+                                if primary_track is not None
+                                else ""
+                            ),
                             "removed_snr": filter_stats.removed_snr,
                             "removed_noise": filter_stats.removed_noise,
                             "removed_range": filter_stats.removed_range,
