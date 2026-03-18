@@ -14,6 +14,7 @@ DEFAULT_RUNTIME_PARAMS_PATH = PROJECT_ROOT / DEFAULT_RUNTIME_PARAMS_RELATIVE
 
 
 GLOBAL_RUNTIME_PARAM_DEFAULTS: Dict[str, Any] = {
+    "sensor_yaw_deg": 0.0,
     "snr_threshold": 110.0,
     "max_noise": None,
     "min_range": 0.0,
@@ -65,8 +66,14 @@ GLOBAL_RUNTIME_PARAM_DEFAULTS: Dict[str, Any] = {
     "control_stop_distance": 0.4,
     "control_resume_distance": 2.0,
     "control_slow_speed_ratio": 0.4,
-    "control_approach_speed_threshold": 0.1,
-    "control_stopped_speed_threshold": 0.05,
+    "control_approach_speed_threshold": 0.15,
+    "control_stopped_speed_threshold": 0.06,
+    "control_belt_axis_x": 0.0,
+    "control_belt_axis_y": 1.0,
+    "control_moving_confirm_sec": 0.3,
+    "control_static_hold_sec": 0.8,
+    "control_static_disp_window_sec": 0.8,
+    "control_static_disp_threshold": 0.05,
     "control_clear_frames": 3,
     "control_out_port": None,
     "control_out_baudrate": 115200,
@@ -83,6 +90,11 @@ GLOBAL_RUNTIME_PARAM_DEFAULTS: Dict[str, Any] = {
     "z_min": -1.0,
     "z_max": 2.0,
     "max_vis_fps": 10.0,
+    "point_persistence_frames": 6,
+    "track_history_sec": 2.5,
+    "track_history_points": 40,
+    "velocity_arrow_scale": 0.8,
+    "velocity_min_speed": 0.08,
 }
 
 
