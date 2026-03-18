@@ -6,7 +6,7 @@ import time
 import traceback
 from datetime import datetime
 from pathlib import Path
-from typing import Iterable, List
+from typing import Iterable, List, Optional, Sequence
 
 import serial
 
@@ -24,6 +24,7 @@ try:
     from ..filter.noise_filter import points_dict_to_list, preprocess_points
     from ..parser.tlv_parse_runner import MMWaveSerialReader, build_keepout_boxes, build_static_clutter_boxes, send_config
     from ..tracking.kalman_tracker import MultiObjectKalmanTracker
+    from ..runtime_params import GLOBAL_RUNTIME_PARAM_DEFAULTS, resolve_runtime_param_defaults
 except ImportError:
     project_root = Path(__file__).resolve().parents[2]
     if str(project_root) not in sys.path:
@@ -32,10 +33,56 @@ except ImportError:
     from src.filter.noise_filter import points_dict_to_list, preprocess_points
     from src.parser.tlv_parse_runner import MMWaveSerialReader, build_keepout_boxes, build_static_clutter_boxes, send_config
     from src.tracking.kalman_tracker import MultiObjectKalmanTracker
+    from src.runtime_params import GLOBAL_RUNTIME_PARAM_DEFAULTS, resolve_runtime_param_defaults
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_ERROR_LOG_DIR = PROJECT_ROOT / "docs" / "error"
+VIEWER_PARAM_DEFAULT_KEYS = (
+    "snr_threshold",
+    "max_noise",
+    "min_range",
+    "max_range",
+    "filter_x_min",
+    "filter_x_max",
+    "filter_y_min",
+    "filter_y_max",
+    "filter_z_min",
+    "filter_z_max",
+    "disable_near_front_keepout",
+    "near_front_distance",
+    "near_front_half_width",
+    "near_front_z_min",
+    "near_front_z_max",
+    "disable_right_rail_keepout",
+    "right_rail_x",
+    "right_rail_width",
+    "right_rail_y_start",
+    "right_rail_length",
+    "right_rail_z_base",
+    "right_rail_height",
+    "right_rail_padding",
+    "disable_static_clutter_filter",
+    "static_clutter_padding",
+    "static_v_min",
+    "static_max_snr",
+    "dbscan_eps",
+    "dbscan_min_samples",
+    "use_velocity_feature",
+    "dbscan_velocity_weight",
+    "association_gate",
+    "max_misses",
+    "min_hits",
+    "report_miss_tolerance",
+    "x_min",
+    "x_max",
+    "y_min",
+    "y_max",
+    "z_min",
+    "z_max",
+    "max_vis_fps",
+)
+VIEWER_PARAM_DEFAULTS = {key: GLOBAL_RUNTIME_PARAM_DEFAULTS[key] for key in VIEWER_PARAM_DEFAULT_KEYS}
 
 
 def append_viewer_error_log(args: argparse.Namespace, exc: Exception, error_log_dir: Path) -> Path:
@@ -54,6 +101,7 @@ def append_viewer_error_log(args: argparse.Namespace, exc: Exception, error_log_
 
         fp.write(f"## Error {timestamp}\n")
         fp.write(f"- 명령: `{command}`\n")
+        fp.write(f"- Params file: `{args.params_file}`\n")
         fp.write(f"- CLI port: `{args.cli_port}`\n")
         fp.write(f"- Data port: `{args.data_port}`\n")
         fp.write(f"- Config: `{args.config}`\n")
@@ -67,8 +115,9 @@ def append_viewer_error_log(args: argparse.Namespace, exc: Exception, error_log_
     return log_path
 
 
-def build_arg_parser() -> argparse.ArgumentParser:
+def build_arg_parser(defaults: dict) -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="3D live rail viewer for radar tracking debug")
+    parser.add_argument("--params-file", default="config/runtime_params.json", help="JSON runtime parameter file")
     parser.add_argument("--cli-port", required=True, help="CLI port (e.g. COM11)")
     parser.add_argument("--data-port", required=True, help="Data port (e.g. COM10)")
     parser.add_argument("--config", required=True, help="Path to mmWave cfg file")
@@ -81,54 +130,55 @@ def build_arg_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--disable-error-log", action="store_true", help="Disable markdown error logging")
 
-    parser.add_argument("--snr-threshold", type=float, default=8.0, help="Minimum SNR for preprocessing")
-    parser.add_argument("--max-noise", type=float, default=None, help="Maximum noise threshold")
-    parser.add_argument("--min-range", type=float, default=0.0, help="Minimum detection range")
-    parser.add_argument("--max-range", type=float, default=None, help="Maximum detection range")
-    parser.add_argument("--filter-x-min", type=float, default=None, help="Inclusive filter ROI minimum X")
-    parser.add_argument("--filter-x-max", type=float, default=None, help="Inclusive filter ROI maximum X")
-    parser.add_argument("--filter-y-min", type=float, default=None, help="Inclusive filter ROI minimum Y")
-    parser.add_argument("--filter-y-max", type=float, default=None, help="Inclusive filter ROI maximum Y")
-    parser.add_argument("--filter-z-min", type=float, default=None, help="Inclusive filter ROI minimum Z")
-    parser.add_argument("--filter-z-max", type=float, default=None, help="Inclusive filter ROI maximum Z")
-    parser.add_argument("--disable-near-front-keepout", action="store_true", help="Disable near-front 1 m keepout box")
-    parser.add_argument("--near-front-distance", type=float, default=1.0, help="Near-front keepout depth in meters")
-    parser.add_argument("--near-front-half-width", type=float, default=1.1, help="Half-width of near-front keepout box")
-    parser.add_argument("--near-front-z-min", type=float, default=-0.5, help="Near-front keepout minimum Z")
-    parser.add_argument("--near-front-z-max", type=float, default=1.5, help="Near-front keepout maximum Z")
-    parser.add_argument("--right-rail-padding", type=float, default=0.15, help="Padding around right rail keepout")
-    parser.add_argument("--disable-right-rail-keepout", action="store_true", help="Disable right-rail keepout box")
-    parser.add_argument("--disable-static-clutter-filter", action="store_true", help="Disable low-velocity static clutter reject")
-    parser.add_argument("--static-clutter-padding", type=float, default=0.25, help="Extra padding for static clutter box")
-    parser.add_argument("--static-v-min", type=float, default=0.12, help="Low-velocity threshold for static clutter reject")
-    parser.add_argument("--static-max-snr", type=float, default=18.0, help="Only reject static clutter when SNR is at most this value")
-    parser.add_argument("--dbscan-eps", type=float, default=0.6, help="DBSCAN eps parameter")
-    parser.add_argument("--dbscan-min-samples", type=int, default=4, help="DBSCAN min_samples parameter")
-    parser.add_argument("--use-velocity-feature", action="store_true", help="Use (x, y, v) DBSCAN features")
-    parser.add_argument("--association-gate", type=float, default=1.5, help="Tracker association gate in meters")
-    parser.add_argument("--max-misses", type=int, default=8, help="Maximum consecutive misses before track deletion")
-    parser.add_argument("--min-hits", type=int, default=2, help="Minimum hits before a track is reported")
+    parser.add_argument("--snr-threshold", type=float, default=defaults["snr_threshold"], help="Minimum SNR for preprocessing")
+    parser.add_argument("--max-noise", type=float, default=defaults["max_noise"], help="Maximum noise threshold")
+    parser.add_argument("--min-range", type=float, default=defaults["min_range"], help="Minimum detection range")
+    parser.add_argument("--max-range", type=float, default=defaults["max_range"], help="Maximum detection range")
+    parser.add_argument("--filter-x-min", type=float, default=defaults["filter_x_min"], help="Inclusive filter ROI minimum X")
+    parser.add_argument("--filter-x-max", type=float, default=defaults["filter_x_max"], help="Inclusive filter ROI maximum X")
+    parser.add_argument("--filter-y-min", type=float, default=defaults["filter_y_min"], help="Inclusive filter ROI minimum Y")
+    parser.add_argument("--filter-y-max", type=float, default=defaults["filter_y_max"], help="Inclusive filter ROI maximum Y")
+    parser.add_argument("--filter-z-min", type=float, default=defaults["filter_z_min"], help="Inclusive filter ROI minimum Z")
+    parser.add_argument("--filter-z-max", type=float, default=defaults["filter_z_max"], help="Inclusive filter ROI maximum Z")
+    parser.add_argument("--disable-near-front-keepout", action="store_true", default=defaults["disable_near_front_keepout"], help="Disable near-front 1 m keepout box")
+    parser.add_argument("--near-front-distance", type=float, default=defaults["near_front_distance"], help="Near-front keepout depth in meters")
+    parser.add_argument("--near-front-half-width", type=float, default=defaults["near_front_half_width"], help="Half-width of near-front keepout box")
+    parser.add_argument("--near-front-z-min", type=float, default=defaults["near_front_z_min"], help="Near-front keepout minimum Z")
+    parser.add_argument("--near-front-z-max", type=float, default=defaults["near_front_z_max"], help="Near-front keepout maximum Z")
+    parser.add_argument("--right-rail-padding", type=float, default=defaults["right_rail_padding"], help="Padding around right rail keepout")
+    parser.add_argument("--disable-right-rail-keepout", action="store_true", default=defaults["disable_right_rail_keepout"], help="Disable right-rail keepout box")
+    parser.add_argument("--disable-static-clutter-filter", action="store_true", default=defaults["disable_static_clutter_filter"], help="Disable low-velocity static clutter reject")
+    parser.add_argument("--static-clutter-padding", type=float, default=defaults["static_clutter_padding"], help="Extra padding for static clutter box")
+    parser.add_argument("--static-v-min", type=float, default=defaults["static_v_min"], help="Low-velocity threshold for static clutter reject")
+    parser.add_argument("--static-max-snr", type=float, default=defaults["static_max_snr"], help="Only reject static clutter when SNR is at most this value")
+    parser.add_argument("--dbscan-eps", type=float, default=defaults["dbscan_eps"], help="DBSCAN eps parameter")
+    parser.add_argument("--dbscan-min-samples", type=int, default=defaults["dbscan_min_samples"], help="DBSCAN min_samples parameter")
+    parser.add_argument("--use-velocity-feature", action="store_true", default=defaults["use_velocity_feature"], help="Use (x, y, v) DBSCAN features")
+    parser.add_argument("--dbscan-velocity-weight", type=float, default=defaults["dbscan_velocity_weight"], help="Velocity scaling weight for DBSCAN")
+    parser.add_argument("--association-gate", type=float, default=defaults["association_gate"], help="Tracker association gate in meters")
+    parser.add_argument("--max-misses", type=int, default=defaults["max_misses"], help="Maximum consecutive misses before track deletion")
+    parser.add_argument("--min-hits", type=int, default=defaults["min_hits"], help="Minimum hits before a track is reported")
     parser.add_argument(
         "--report-miss-tolerance",
         type=int,
-        default=0,
+        default=defaults["report_miss_tolerance"],
         help="Only draw tracks whose miss count is at most this value",
     )
 
-    parser.add_argument("--x-min", type=float, default=-2.5, help="3D view minimum X")
-    parser.add_argument("--x-max", type=float, default=2.5, help="3D view maximum X")
-    parser.add_argument("--y-min", type=float, default=0.0, help="3D view minimum Y")
-    parser.add_argument("--y-max", type=float, default=8.0, help="3D view maximum Y")
-    parser.add_argument("--z-min", type=float, default=-1.0, help="3D view minimum Z")
-    parser.add_argument("--z-max", type=float, default=2.0, help="3D view maximum Z")
-    parser.add_argument("--max-vis-fps", type=float, default=10.0, help="Maximum visualization refresh rate")
+    parser.add_argument("--x-min", type=float, default=defaults["x_min"], help="3D view minimum X")
+    parser.add_argument("--x-max", type=float, default=defaults["x_max"], help="3D view maximum X")
+    parser.add_argument("--y-min", type=float, default=defaults["y_min"], help="3D view minimum Y")
+    parser.add_argument("--y-max", type=float, default=defaults["y_max"], help="3D view maximum Y")
+    parser.add_argument("--z-min", type=float, default=defaults["z_min"], help="3D view minimum Z")
+    parser.add_argument("--z-max", type=float, default=defaults["z_max"], help="3D view maximum Z")
+    parser.add_argument("--max-vis-fps", type=float, default=defaults["max_vis_fps"], help="Maximum visualization refresh rate")
 
-    parser.add_argument("--rail-x", type=float, default=1.8, help="Right rail center X position")
-    parser.add_argument("--rail-width", type=float, default=0.35, help="Right rail width")
-    parser.add_argument("--rail-y-start", type=float, default=0.0, help="Right rail start Y position")
-    parser.add_argument("--rail-length", type=float, default=8.0, help="Right rail length along Y")
-    parser.add_argument("--rail-z-base", type=float, default=0.0, help="Right rail base Z position")
-    parser.add_argument("--rail-height", type=float, default=1.0, help="Right rail height")
+    parser.add_argument("--rail-x", "--right-rail-x", dest="right_rail_x", type=float, default=defaults["right_rail_x"], help="Right rail center X position")
+    parser.add_argument("--rail-width", "--right-rail-width", dest="right_rail_width", type=float, default=defaults["right_rail_width"], help="Right rail width")
+    parser.add_argument("--rail-y-start", "--right-rail-y-start", dest="right_rail_y_start", type=float, default=defaults["right_rail_y_start"], help="Right rail start Y position")
+    parser.add_argument("--rail-length", "--right-rail-length", dest="right_rail_length", type=float, default=defaults["right_rail_length"], help="Right rail length along Y")
+    parser.add_argument("--rail-z-base", "--right-rail-z-base", dest="right_rail_z_base", type=float, default=defaults["right_rail_z_base"], help="Right rail base Z position")
+    parser.add_argument("--rail-height", "--right-rail-height", dest="right_rail_height", type=float, default=defaults["right_rail_height"], help="Right rail height")
     return parser
 
 
@@ -144,12 +194,12 @@ def configure_axis(ax, args: argparse.Namespace) -> None:
 
 
 def draw_right_rail(ax, args: argparse.Namespace) -> None:
-    x0 = args.rail_x - (args.rail_width / 2.0)
-    x1 = args.rail_x + (args.rail_width / 2.0)
-    y0 = args.rail_y_start
-    y1 = args.rail_y_start + args.rail_length
-    z0 = args.rail_z_base
-    z1 = args.rail_z_base + args.rail_height
+    x0 = args.right_rail_x - (args.right_rail_width / 2.0)
+    x1 = args.right_rail_x + (args.right_rail_width / 2.0)
+    y0 = args.right_rail_y_start
+    y1 = args.right_rail_y_start + args.right_rail_length
+    z0 = args.right_rail_z_base
+    z1 = args.right_rail_z_base + args.right_rail_height
 
     vertices = [
         (x0, y0, z0),
@@ -172,7 +222,7 @@ def draw_right_rail(ax, args: argparse.Namespace) -> None:
 
     rail = Poly3DCollection(faces, facecolors="#f08c2b", edgecolors="#c46b18", linewidths=0.8, alpha=0.18)
     ax.add_collection3d(rail)
-    ax.text(args.rail_x, y1, z1 + 0.05, "Right Rail", color="#b55e12", fontsize=9, ha="center")
+    ax.text(args.right_rail_x, y1, z1 + 0.05, "Right Rail", color="#b55e12", fontsize=9, ha="center")
 
 
 def scatter_points(ax, points: Iterable[dict], color: str, size: float, alpha: float, label: str) -> None:
@@ -258,22 +308,22 @@ def run_viewer(args: argparse.Namespace) -> None:
         near_front_z_min=args.near_front_z_min,
         near_front_z_max=args.near_front_z_max,
         right_rail_enabled=not args.disable_right_rail_keepout,
-        right_rail_x=args.rail_x,
-        right_rail_width=args.rail_width,
-        right_rail_y_start=args.rail_y_start,
-        right_rail_length=args.rail_length,
-        right_rail_z_base=args.rail_z_base,
-        right_rail_height=args.rail_height,
+        right_rail_x=args.right_rail_x,
+        right_rail_width=args.right_rail_width,
+        right_rail_y_start=args.right_rail_y_start,
+        right_rail_length=args.right_rail_length,
+        right_rail_z_base=args.right_rail_z_base,
+        right_rail_height=args.right_rail_height,
         right_rail_padding=args.right_rail_padding,
     )
     static_clutter_boxes = build_static_clutter_boxes(
         enabled=not args.disable_static_clutter_filter,
-        right_rail_x=args.rail_x,
-        right_rail_width=args.rail_width,
-        right_rail_y_start=args.rail_y_start,
-        right_rail_length=args.rail_length,
-        right_rail_z_base=args.rail_z_base,
-        right_rail_height=args.rail_height,
+        right_rail_x=args.right_rail_x,
+        right_rail_width=args.right_rail_width,
+        right_rail_y_start=args.right_rail_y_start,
+        right_rail_length=args.right_rail_length,
+        right_rail_z_base=args.right_rail_z_base,
+        right_rail_height=args.right_rail_height,
         right_rail_padding=args.right_rail_padding,
         static_clutter_padding=args.static_clutter_padding,
     )
@@ -324,6 +374,7 @@ def run_viewer(args: argparse.Namespace) -> None:
                     eps=args.dbscan_eps,
                     min_samples=args.dbscan_min_samples,
                     use_velocity_feature=args.use_velocity_feature,
+                    velocity_weight=args.dbscan_velocity_weight,
                 )
                 tracks = tracker.update(clusters, frame_ts=now)
 
@@ -353,9 +404,17 @@ def run_viewer(args: argparse.Namespace) -> None:
             plt.close(fig)
 
 
+def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
+    argv = list(sys.argv[1:] if argv is None else argv)
+    params_path, defaults = resolve_runtime_param_defaults(argv, VIEWER_PARAM_DEFAULTS)
+    parser = build_arg_parser(defaults)
+    args = parser.parse_args(argv)
+    args.params_file = str(params_path)
+    return args
+
+
 def main() -> None:
-    parser = build_arg_parser()
-    args = parser.parse_args()
+    args = parse_args()
     try:
         run_viewer(args)
     except Exception as exc:
