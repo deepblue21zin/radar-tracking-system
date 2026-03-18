@@ -20,6 +20,8 @@ try:
     from ..filter.noise_filter import points_dict_to_list, preprocess_points
     from ..cluster.dbscan_cluster import cluster_points
     from ..tracking.kalman_tracker import MultiObjectKalmanTracker
+    from ..control.proximity_speed_control import ControlZone, ProximitySpeedController
+    from ..communication.control_protocol import ControlPacketSerialWriter
 except ImportError:
     src_root = Path(__file__).resolve().parents[1]
     if str(src_root) not in sys.path:
@@ -27,6 +29,8 @@ except ImportError:
     from filter.noise_filter import points_dict_to_list, preprocess_points
     from cluster.dbscan_cluster import cluster_points
     from tracking.kalman_tracker import MultiObjectKalmanTracker
+    from control.proximity_speed_control import ControlZone, ProximitySpeedController
+    from communication.control_protocol import ControlPacketSerialWriter
 
 
 WORD = [1, 2**8, 2**16, 2**24]
@@ -95,6 +99,13 @@ class CsvRunLogger:
                 "filtered_points",
                 "clusters",
                 "tracks",
+                "control_command",
+                "control_event",
+                "control_speed_ratio",
+                "control_track_id",
+                "control_zone_distance_m",
+                "control_closing_speed_mps",
+                "control_state_changed",
                 "parser_latency_ms",
                 "pipeline_latency_ms",
                 "parse_failures_so_far",
@@ -341,6 +352,23 @@ def run_realtime(
     association_gate: float = 1.5,
     max_misses: int = 8,
     min_hits: int = 2,
+    control_enabled: bool = False,
+    control_zone_x_min: Optional[float] = None,
+    control_zone_x_max: Optional[float] = None,
+    control_zone_y_min: Optional[float] = None,
+    control_zone_y_max: Optional[float] = None,
+    control_zone_z_min: Optional[float] = None,
+    control_zone_z_max: Optional[float] = None,
+    control_slow_distance: float = 1.5,
+    control_stop_distance: float = 0.4,
+    control_resume_distance: float = 2.0,
+    control_slow_speed_ratio: float = 0.4,
+    control_approach_speed_threshold: float = 0.1,
+    control_stopped_speed_threshold: float = 0.05,
+    control_clear_frames: int = 3,
+    control_out_port: Optional[str] = None,
+    control_out_baudrate: int = 115200,
+    control_out_heartbeat_ms: int = 200,
     scenario: str = "live_run",
     roi_tag: str = "",
     log_dir: Optional[str] = None,
@@ -348,6 +376,8 @@ def run_realtime(
 ) -> None:
     config_path = Path(config_file)
     tracker = None
+    speed_controller = None
+    control_writer = None
     dbscan_import_error_printed = False
     started_at = datetime.now()
     logger = CsvRunLogger(
@@ -366,6 +396,55 @@ def run_realtime(
     total_parser_latency_ms = 0.0
     total_pipeline_latency_ms = 0.0
     prev_frame_number: Optional[int] = None
+
+    if control_enabled:
+        required_zone_args = {
+            "control_zone_x_min": control_zone_x_min,
+            "control_zone_x_max": control_zone_x_max,
+            "control_zone_y_min": control_zone_y_min,
+            "control_zone_y_max": control_zone_y_max,
+        }
+        missing_zone_args = [name for name, value in required_zone_args.items() if value is None]
+        if missing_zone_args:
+            raise ValueError(
+                "Control mode requires zone bounds: "
+                + ", ".join(missing_zone_args)
+            )
+
+        control_zone = ControlZone(
+            x_min=float(control_zone_x_min),
+            x_max=float(control_zone_x_max),
+            y_min=float(control_zone_y_min),
+            y_max=float(control_zone_y_max),
+            z_min=control_zone_z_min,
+            z_max=control_zone_z_max,
+        )
+        speed_controller = ProximitySpeedController(
+            control_zone=control_zone,
+            slow_distance=control_slow_distance,
+            stop_distance=control_stop_distance,
+            resume_distance=control_resume_distance,
+            slow_speed_ratio=control_slow_speed_ratio,
+            approach_speed_threshold=control_approach_speed_threshold,
+            stationary_speed_threshold=control_stopped_speed_threshold,
+            clear_frames_required=control_clear_frames,
+        )
+        print(
+            "[CTRL] enabled "
+            f"zone={control_zone.describe()} slow_dist={control_slow_distance:.2f} "
+            f"stop_dist={control_stop_distance:.2f} resume_dist={control_resume_distance:.2f} "
+            f"slow_speed={control_slow_speed_ratio:.2f}"
+        )
+        if control_out_port is not None:
+            control_writer = ControlPacketSerialWriter(
+                port=control_out_port,
+                baudrate=control_out_baudrate,
+                heartbeat_interval_ms=control_out_heartbeat_ms,
+            )
+            print(
+                f"[CTRL_TX] port={control_out_port} baud={control_out_baudrate} "
+                f"heartbeat_ms={control_out_heartbeat_ms}"
+            )
 
     try:
         tracker = MultiObjectKalmanTracker(
@@ -420,6 +499,35 @@ def run_realtime(
                     if tracker is not None:
                         tracks = tracker.update(clusters, frame_ts=now)
 
+                    control_decision = None
+                    if speed_controller is not None:
+                        control_inputs = tracks if tracks else clusters
+                        control_decision = speed_controller.update(control_inputs)
+                        if control_decision.changed or control_decision.command != "RESUME":
+                            zone_dist_text = (
+                                f"{control_decision.zone_distance_m:.2f}"
+                                if control_decision.zone_distance_m is not None
+                                else "n/a"
+                            )
+                            closing_text = (
+                                f"{control_decision.closing_speed_mps:.2f}"
+                                if control_decision.closing_speed_mps is not None
+                                else "n/a"
+                            )
+                            track_text = control_decision.track_id if control_decision.track_id is not None else "-"
+                            print(
+                                f"[CTRL] event={control_decision.primary_event} cmd={control_decision.command} "
+                                f"speed={control_decision.speed_ratio:.2f} track={track_text} "
+                                f"dist={zone_dist_text}m closing={closing_text}mps"
+                            )
+                        if control_writer is not None:
+                            encoded_packet = control_writer.send_decision(control_decision)
+                            if encoded_packet is not None and control_decision.changed:
+                                print(
+                                    f"[CTRL_TX] seq={encoded_packet.sequence} "
+                                    f"cmd={control_decision.command} pct={encoded_packet.speed_ratio_pct}"
+                                )
+
                     pipeline_latency_ms = (time.perf_counter() - process_t0) * 1000.0
                     frame_gap = 0 if prev_frame_number is None else max(0, frame.frame_number - prev_frame_number - 1)
                     prev_frame_number = frame.frame_number
@@ -456,6 +564,23 @@ def run_realtime(
                             "filtered_points": len(filtered_points),
                             "clusters": len(clusters),
                             "tracks": len(tracks),
+                            "control_command": control_decision.command if control_decision is not None else "",
+                            "control_event": control_decision.primary_event if control_decision is not None else "",
+                            "control_speed_ratio": (
+                                round(control_decision.speed_ratio, 3) if control_decision is not None else ""
+                            ),
+                            "control_track_id": control_decision.track_id if control_decision is not None else "",
+                            "control_zone_distance_m": (
+                                round(control_decision.zone_distance_m, 3)
+                                if control_decision is not None and control_decision.zone_distance_m is not None
+                                else ""
+                            ),
+                            "control_closing_speed_mps": (
+                                round(control_decision.closing_speed_mps, 3)
+                                if control_decision is not None and control_decision.closing_speed_mps is not None
+                                else ""
+                            ),
+                            "control_state_changed": int(control_decision.changed) if control_decision is not None else "",
                             "parser_latency_ms": round(frame.parser_latency_ms, 3),
                             "pipeline_latency_ms": round(pipeline_latency_ms, 3),
                             "parse_failures_so_far": reader.stats.parse_failures,
@@ -511,6 +636,8 @@ def run_realtime(
             }
             logger.log_summary(summary)
             logger.close()
+            if control_writer is not None:
+                control_writer.close()
 
             if not disable_file_log:
                 print(f"[LOG] frame_log={logger.frame_log_path}")
@@ -547,6 +674,74 @@ def main() -> None:
     parser.add_argument("--association-gate", type=float, default=1.5, help="Tracker association gate in meters")
     parser.add_argument("--max-misses", type=int, default=8, help="Maximum consecutive misses before track deletion")
     parser.add_argument("--min-hits", type=int, default=2, help="Minimum hits before a track is reported")
+
+    parser.add_argument("--control-enabled", action="store_true", help="Enable zone-based speed control decisions")
+    parser.add_argument("--control-zone-x-min", type=float, default=None, help="Control zone minimum x in meters")
+    parser.add_argument("--control-zone-x-max", type=float, default=None, help="Control zone maximum x in meters")
+    parser.add_argument("--control-zone-y-min", type=float, default=None, help="Control zone minimum y in meters")
+    parser.add_argument("--control-zone-y-max", type=float, default=None, help="Control zone maximum y in meters")
+    parser.add_argument("--control-zone-z-min", type=float, default=None, help="Optional control zone minimum z")
+    parser.add_argument("--control-zone-z-max", type=float, default=None, help="Optional control zone maximum z")
+    parser.add_argument(
+        "--control-slow-distance",
+        type=float,
+        default=1.5,
+        help="Distance from control zone that triggers SLOW",
+    )
+    parser.add_argument(
+        "--control-stop-distance",
+        type=float,
+        default=0.4,
+        help="Distance from control zone that triggers STOP",
+    )
+    parser.add_argument(
+        "--control-resume-distance",
+        type=float,
+        default=2.0,
+        help="Distance beyond which RESUME is allowed",
+    )
+    parser.add_argument(
+        "--control-slow-speed-ratio",
+        type=float,
+        default=0.4,
+        help="Belt speed ratio to use in SLOW state",
+    )
+    parser.add_argument(
+        "--control-approach-speed-threshold",
+        type=float,
+        default=0.1,
+        help="Closing speed threshold for OBJECT_APPROACHING event",
+    )
+    parser.add_argument(
+        "--control-stopped-speed-threshold",
+        type=float,
+        default=0.05,
+        help="Speed threshold for OBJECT_STOPPED event",
+    )
+    parser.add_argument(
+        "--control-clear-frames",
+        type=int,
+        default=3,
+        help="Frames required before returning to RESUME after tracks disappear",
+    )
+    parser.add_argument(
+        "--control-out-port",
+        default=None,
+        help="Optional serial port to transmit control packets to STM32 (e.g. COM7)",
+    )
+    parser.add_argument(
+        "--control-out-baudrate",
+        type=int,
+        default=115200,
+        help="Baudrate for outgoing control packets",
+    )
+    parser.add_argument(
+        "--control-out-heartbeat-ms",
+        type=int,
+        default=200,
+        help="Heartbeat interval for repeated control packets",
+    )
+
     parser.add_argument("--scenario", default="live_run", help="Scenario tag for runtime logs")
     parser.add_argument("--roi-tag", default="", help="ROI tag for runtime logs")
     parser.add_argument("--log-dir", default=str(DEFAULT_LOG_DIR), help="Directory to store runtime CSV logs")
@@ -570,6 +765,23 @@ def main() -> None:
         association_gate=args.association_gate,
         max_misses=args.max_misses,
         min_hits=args.min_hits,
+        control_enabled=args.control_enabled,
+        control_zone_x_min=args.control_zone_x_min,
+        control_zone_x_max=args.control_zone_x_max,
+        control_zone_y_min=args.control_zone_y_min,
+        control_zone_y_max=args.control_zone_y_max,
+        control_zone_z_min=args.control_zone_z_min,
+        control_zone_z_max=args.control_zone_z_max,
+        control_slow_distance=args.control_slow_distance,
+        control_stop_distance=args.control_stop_distance,
+        control_resume_distance=args.control_resume_distance,
+        control_slow_speed_ratio=args.control_slow_speed_ratio,
+        control_approach_speed_threshold=args.control_approach_speed_threshold,
+        control_stopped_speed_threshold=args.control_stopped_speed_threshold,
+        control_clear_frames=args.control_clear_frames,
+        control_out_port=args.control_out_port,
+        control_out_baudrate=args.control_out_baudrate,
+        control_out_heartbeat_ms=args.control_out_heartbeat_ms,
         scenario=args.scenario,
         roi_tag=args.roi_tag,
         log_dir=args.log_dir,

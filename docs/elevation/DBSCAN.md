@@ -32,6 +32,14 @@
 - confidence를 point count 외 지표까지 반영
 - false cluster 사례 분류
 
+### 발표/차별화용 backlog
+- sklearn `DBSCAN` 호출부를 그대로 쓰더라도, `feature engineering`은 우리 설계로 명확히 분리
+- velocity scaling 계수(`alpha_v`)를 도입해서 `(x, y, v)` feature 영향도를 직접 튜닝
+- near / mid / far range band별 adaptive `eps` 정책 설계
+- cluster 후처리로 `cluster extent`, `velocity consistency`, `size` 기반 reject rule 추가
+- confidence를 `point count + snr/noise + range` 조합으로 재설계
+- `baseline vs velocity feature vs adaptive eps` 비교표를 만들어 "우리가 바꾼 뒤 품질이 어떻게 변했는지" 증명
+
 ### 테스트/재현성
 - parameter sweep 자동화
 - on/off velocity feature 비교 실험
@@ -58,3 +66,4 @@
 ## 업데이트 로그
 - 2026-03-14: baseline clustering 구현 상태를 기준으로 완료 항목 취소선 정리
 - 2026-03-14: 현재 남은 핵심 backlog를 KPI 중심으로 재정리
+- 2026-03-15: 발표용 차별화 backlog 추가
