@@ -6,7 +6,7 @@ ALLOW_UNICODE_NAMES    = YES
 OUTPUT_LANGUAGE        = English
 
 MARKDOWN_SUPPORT       = YES
-TOC_INCLUDE_HEADINGS   = 2
+TOC_INCLUDE_HEADINGS   = 4
 USE_MDFILE_AS_MAINPAGE = docs/doxygen_overview.md
 
 FULL_PATH_NAMES        = NO
@@ -15,6 +15,8 @@ STRIP_FROM_PATH        = .
 INPUT                  = README.md \
                          docs/architecture.md \
                          docs/doxygen_overview.md \
+                         docs/runtime_logging_roi_plan.md \
+                         docs/elevation \
                          src
 FILE_PATTERNS          = *.md \
                          *.py \
@@ -55,8 +57,8 @@ SKIP_FUNCTION_MACROS   = YES
 
 HAVE_DOT               = YES
 DOT_PATH               = "C:/Program Files/Graphviz/bin"
-DOT_IMAGE_FORMAT       = png
-INTERACTIVE_SVG        = NO
+DOT_IMAGE_FORMAT       = svg
+INTERACTIVE_SVG        = YES
 DOT_MULTI_TARGETS      = YES
 DOT_GRAPH_MAX_NODES    = 80
 MAX_DOT_GRAPH_DEPTH    = 3
