@@ -20,7 +20,7 @@ except ImportError as exc:
     ) from exc
 
 try:
-    from ..cluster.dbscan_cluster import cluster_points
+    from ..cluster.dbscan_cluster import cluster_points, normalize_adaptive_eps_bands
     from ..filter.noise_filter import points_dict_to_list, preprocess_points
     from ..parser.tlv_parse_runner import MMWaveSerialReader, build_keepout_boxes, build_static_clutter_boxes, send_config
     from ..tracking.kalman_tracker import MultiObjectKalmanTracker
@@ -29,7 +29,7 @@ except ImportError:
     project_root = Path(__file__).resolve().parents[2]
     if str(project_root) not in sys.path:
         sys.path.insert(0, str(project_root))
-    from src.cluster.dbscan_cluster import cluster_points
+    from src.cluster.dbscan_cluster import cluster_points, normalize_adaptive_eps_bands
     from src.filter.noise_filter import points_dict_to_list, preprocess_points
     from src.parser.tlv_parse_runner import MMWaveSerialReader, build_keepout_boxes, build_static_clutter_boxes, send_config
     from src.tracking.kalman_tracker import MultiObjectKalmanTracker
@@ -70,6 +70,7 @@ VIEWER_PARAM_DEFAULT_KEYS = (
     "dbscan_min_samples",
     "use_velocity_feature",
     "dbscan_velocity_weight",
+    "dbscan_adaptive_eps_bands",
     "association_gate",
     "max_misses",
     "min_hits",
@@ -155,6 +156,11 @@ def build_arg_parser(defaults: dict) -> argparse.ArgumentParser:
     parser.add_argument("--dbscan-min-samples", type=int, default=defaults["dbscan_min_samples"], help="DBSCAN min_samples parameter")
     parser.add_argument("--use-velocity-feature", action="store_true", default=defaults["use_velocity_feature"], help="Use (x, y, v) DBSCAN features")
     parser.add_argument("--dbscan-velocity-weight", type=float, default=defaults["dbscan_velocity_weight"], help="Velocity scaling weight for DBSCAN")
+    parser.add_argument(
+        "--dbscan-adaptive-eps-bands",
+        default=defaults["dbscan_adaptive_eps_bands"],
+        help="Adaptive DBSCAN range bands in JSON or 'r_min:r_max:eps[:min_samples],...' format",
+    )
     parser.add_argument("--association-gate", type=float, default=defaults["association_gate"], help="Tracker association gate in meters")
     parser.add_argument("--max-misses", type=int, default=defaults["max_misses"], help="Maximum consecutive misses before track deletion")
     parser.add_argument("--min-hits", type=int, default=defaults["min_hits"], help="Minimum hits before a track is reported")
@@ -375,6 +381,7 @@ def run_viewer(args: argparse.Namespace) -> None:
                     min_samples=args.dbscan_min_samples,
                     use_velocity_feature=args.use_velocity_feature,
                     velocity_weight=args.dbscan_velocity_weight,
+                    adaptive_eps_bands=args.dbscan_adaptive_eps_bands,
                 )
                 tracks = tracker.update(clusters, frame_ts=now)
 
@@ -409,6 +416,10 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
     params_path, defaults = resolve_runtime_param_defaults(argv, VIEWER_PARAM_DEFAULTS)
     parser = build_arg_parser(defaults)
     args = parser.parse_args(argv)
+    try:
+        args.dbscan_adaptive_eps_bands = normalize_adaptive_eps_bands(args.dbscan_adaptive_eps_bands)
+    except ValueError as exc:
+        parser.error(str(exc))
     args.params_file = str(params_path)
     return args
 

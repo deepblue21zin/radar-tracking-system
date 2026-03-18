@@ -10,17 +10,10 @@
  * different timers / GPIOs / driver wiring (TB6600 STEP/DIR, PWM inverter, etc.).
  */
 
-#include "control_packet_protocol.h"
+#include "stm32_control_rx_example.h"
 
 #include <stddef.h>
 #include <stdint.h>
-
-typedef struct {
-    uint8_t target_speed_pct;
-    uint8_t applied_speed_pct;
-    uint32_t last_packet_ms;
-    uint32_t timeout_count;
-} conveyor_control_state_t;
 
 static uint8_t read_u8(const uint8_t *buf, size_t index)
 {
@@ -130,7 +123,7 @@ static uint8_t clamp_speed_pct(uint8_t speed_pct)
     return (speed_pct > 100u) ? 100u : speed_pct;
 }
 
-static void conveyor_motor_apply_speed_pct(uint8_t speed_pct)
+STM32_CONTROL_WEAK void conveyor_motor_apply_speed_pct(uint8_t speed_pct)
 {
     (void)speed_pct;
     /* TODO:
@@ -139,7 +132,7 @@ static void conveyor_motor_apply_speed_pct(uint8_t speed_pct)
      */
 }
 
-static void conveyor_motor_stop_immediate(void)
+STM32_CONTROL_WEAK void conveyor_motor_stop_immediate(void)
 {
     /* TODO:
      * - Disable STEP timer output and/or drive ENA to safe state.
