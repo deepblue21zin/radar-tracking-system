@@ -124,9 +124,23 @@ python src/parser/tlv_parse_runner.py --cli-port COM11 --data-port COM10 --confi
 
 ### 4.6 3D 시각화로 보고 싶을 때
 오른쪽 rail이 있는 3D 디버그 viewer를 실행한다.
+현재 viewer는 단일 프레임 점만 찍는 대신, 최근 filtered point를 누적한 `motion cloud`, track `trail`, velocity `arrow`를 함께 보여줘서 사람이 어느 방향으로 움직이고 있는지 읽기 쉽게 했다.
+또한 raw/filter/cluster/track 계산은 이제 `src/parser/runtime_pipeline.py`의 공용 처리 함수(`build_runtime_processing_context()`, `process_runtime_frame()`)를 그대로 사용하므로, runtime 쪽 필터/DBSCAN/트래커 변경이 viewer와 어긋나지 않는다.
 
 ```bash
 python src/visualization/live_rail_viewer.py --cli-port COM11 --data-port COM10 --config config/profile_3d.cfg
+```
+
+사람 움직임이 약하게 보이면:
+- `--max-range 8.0`처럼 range gate를 먼저 완화
+- `--point-persistence-frames`를 늘려 motion cloud를 더 길게 유지
+- `--track-history-sec`를 늘려 이동 궤적을 더 길게 표시
+- 축이 돌아가 보이면 `--sensor-yaw-deg`로 평면 회전을 보정
+- 화면 녹화 중 프레임 누락이 많으면 `--max-vis-fps 5`처럼 시각화 FPS를 낮춰서 본다
+
+예:
+```bash
+python src/visualization/live_rail_viewer.py --cli-port COM11 --data-port COM10 --config config/profile_3d.cfg --max-range 8.0 --point-persistence-frames 8 --track-history-sec 3.0 --sensor-yaw-deg 90 --max-vis-fps 5
 ```
 
 문제가 생기면:
@@ -198,7 +212,8 @@ frame=123 gap=0 packet=2848B raw=87 filtered=51 clusters=3 tracks=2 parser_ms=2.
 
 시각화:
 - `src/visualization/live_rail_viewer.py`도 `--params-file`을 지원한다.
-- viewer는 공용 filter/clustering 기본값과 함께 시야 범위(`x/y/z`) 및 `--max-vis-fps`를 읽는다.
+- viewer는 공용 filter/clustering 기본값과 함께 시야 범위(`x/y/z`), `--max-vis-fps`, motion cloud/trail 관련 파라미터를 읽는다.
+- viewer의 frame 처리도 `src/parser/runtime_pipeline.py` 공용 경로를 사용한다.
 
 ## 6. 데이터 계약
 파서 출력(`ParsedFrame`):
@@ -233,6 +248,7 @@ frame=123 gap=0 packet=2848B raw=87 filtered=51 clusters=3 tracks=2 parser_ms=2.
 측정 및 기록:
 - 런타임 FPS 로그: 표준 출력
 - 프레임 CSV/텍스트 로그: `evidence/runtime_logs/`
+- CSV 프레임 로그가 생성되면 같은 이름의 overview PNG(`frames_YYYYMMDD_HHMMSS_overview.png`)도 자동 생성
 - 실험 결과 기록: `docs/performance_log.md`
 
 ## 8. 트러블슈팅

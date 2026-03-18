@@ -2,6 +2,7 @@
 
 import argparse
 import csv
+import math
 import sys
 import time
 import traceback
@@ -24,6 +25,7 @@ try:
         GLOBAL_RUNTIME_PARAM_DEFAULTS,
         resolve_runtime_param_defaults,
     )
+    from ..visualization.runtime_log_overview import render_runtime_log_overview_png
 except ImportError:
     src_root = Path(__file__).resolve().parents[1]
     if str(src_root) not in sys.path:
@@ -39,6 +41,7 @@ except ImportError:
         GLOBAL_RUNTIME_PARAM_DEFAULTS,
         resolve_runtime_param_defaults,
     )
+    from visualization.runtime_log_overview import render_runtime_log_overview_png
 
 
 WORD = [1, 2**8, 2**16, 2**24]
@@ -47,6 +50,7 @@ DEFAULT_LOG_DIR = PROJECT_ROOT / "evidence" / "runtime_logs"
 DEFAULT_ERROR_LOG_DIR = PROJECT_ROOT / "docs" / "error"
 
 RUNNER_PARAM_DEFAULT_KEYS = (
+    "sensor_yaw_deg",
     "snr_threshold",
     "max_noise",
     "min_range",
@@ -97,6 +101,12 @@ RUNNER_PARAM_DEFAULT_KEYS = (
     "control_slow_speed_ratio",
     "control_approach_speed_threshold",
     "control_stopped_speed_threshold",
+    "control_belt_axis_x",
+    "control_belt_axis_y",
+    "control_moving_confirm_sec",
+    "control_static_hold_sec",
+    "control_static_disp_window_sec",
+    "control_static_disp_threshold",
     "control_clear_frames",
     "control_out_port",
     "control_out_baudrate",
@@ -131,6 +141,42 @@ class ReaderStats:
     invalid_packet_events: int = 0
     dropped_frames_estimate: int = 0
     last_frame_number: Optional[int] = None
+
+
+@dataclass
+class RuntimeProcessingContext:
+    sensor_yaw_deg: float = 0.0
+    snr_threshold: float = 8.0
+    max_noise: Optional[float] = None
+    min_range: float = 0.0
+    max_range: Optional[float] = None
+    filter_x_min: Optional[float] = None
+    filter_x_max: Optional[float] = None
+    filter_y_min: Optional[float] = None
+    filter_y_max: Optional[float] = None
+    filter_z_min: Optional[float] = None
+    filter_z_max: Optional[float] = None
+    keepout_boxes: Sequence[AxisAlignedBox] = ()
+    static_clutter_boxes: Sequence[AxisAlignedBox] = ()
+    static_v_min: Optional[float] = None
+    static_max_snr: Optional[float] = None
+    filter_sample_count: int = 0
+    dbscan_eps: float = 0.35
+    dbscan_min_samples: int = 4
+    use_velocity_feature: bool = False
+    dbscan_velocity_weight: float = 0.25
+    dbscan_adaptive_eps_bands: object = None
+
+
+@dataclass
+class RuntimeFrameProcessingResult:
+    raw_points: List[dict]
+    filtered_points: List[dict]
+    filter_stats: FilterStats
+    clusters: List[dict]
+    tracks: List[object]
+    pipeline_latency_ms: float
+    dbscan_import_error: Optional[Exception] = None
 
 
 class CsvRunLogger:
@@ -186,6 +232,13 @@ class CsvRunLogger:
                 "raw_range_max",
                 "filtered_range_min",
                 "filtered_range_max",
+                "primary_cluster_label",
+                "primary_cluster_range_m",
+                "primary_cluster_size",
+                "primary_cluster_confidence",
+                "primary_track_id",
+                "primary_track_range_m",
+                "primary_track_confidence",
                 "removed_snr",
                 "removed_noise",
                 "removed_range",
@@ -196,10 +249,13 @@ class CsvRunLogger:
                 "removed_static_clutter",
                 "control_command",
                 "control_event",
+                "control_state",
                 "control_speed_ratio",
                 "control_track_id",
                 "control_zone_distance_m",
                 "control_closing_speed_mps",
+                "control_belt_speed_mps",
+                "control_belt_displacement_m",
                 "control_state_changed",
                 "parser_latency_ms",
                 "pipeline_latency_ms",
@@ -300,13 +356,20 @@ class CsvRunLogger:
         if self._frame_fp is not None:
             self._frame_fp.close()
             self._frame_fp = None
+            self._frame_writer = None
         if self._text_fp is not None:
             self._text_fp.close()
             self._text_fp = None
 
+    def close_frame_log(self) -> None:
+        if self._frame_fp is not None:
+            self._frame_fp.close()
+            self._frame_fp = None
+            self._frame_writer = None
+
 
 class MMWaveSerialReader:
-    def __init__(self, max_buffer_size: int = 2**15, debug: bool = False):
+    def __init__(self, max_buffer_size: int = 2**17, debug: bool = False):
         self.max_buffer_size = max_buffer_size
         self.byte_buffer = bytearray(max_buffer_size)
         self.byte_buffer_length = 0
@@ -542,6 +605,73 @@ def format_track_preview(tracks: List[object], limit: int) -> str:
     return "[" + ", ".join(preview_items) + "]"
 
 
+def _cluster_range_m(cluster: dict) -> float:
+    x = float(cluster.get("x", 0.0))
+    y = float(cluster.get("y", 0.0))
+    z = float(cluster.get("z", 0.0))
+    return math.sqrt((x * x) + (y * y) + (z * z))
+
+
+def _track_range_m(track: object) -> float:
+    x = float(getattr(track, "x", 0.0))
+    y = float(getattr(track, "y", 0.0))
+    return math.hypot(x, y)
+
+
+def select_primary_cluster(clusters: List[dict]) -> Optional[dict]:
+    if not clusters:
+        return None
+
+    return min(
+        clusters,
+        key=lambda cluster: (
+            _cluster_range_m(cluster),
+            -float(cluster.get("confidence", 0.0)),
+            -int(cluster.get("size", 0)),
+        ),
+    )
+
+
+def select_primary_track(tracks: List[object]) -> Optional[object]:
+    if not tracks:
+        return None
+
+    return min(
+        tracks,
+        key=lambda track: (
+            _track_range_m(track),
+            -float(getattr(track, "confidence", 0.0)),
+            getattr(track, "track_id", 0),
+        ),
+    )
+
+
+def format_primary_target_summary(primary_cluster: Optional[dict], primary_track: Optional[object]) -> str:
+    parts: List[str] = []
+
+    if primary_cluster is not None:
+        parts.append(
+            "primary_cluster="
+            + "{"
+            + f"label={primary_cluster.get('label', -1)}, "
+            + f"range={_cluster_range_m(primary_cluster):.2f}m, "
+            + f"size={int(primary_cluster.get('size', 0))}"
+            + "}"
+        )
+
+    if primary_track is not None:
+        parts.append(
+            "primary_track="
+            + "{"
+            + f"id={getattr(primary_track, 'track_id', -1)}, "
+            + f"range={_track_range_m(primary_track):.2f}m, "
+            + f"hits={getattr(primary_track, 'hits', 0)}"
+            + "}"
+        )
+
+    return " ".join(parts)
+
+
 def format_frame_summary(
     frame: ParsedFrame,
     frame_gap: int,
@@ -597,6 +727,24 @@ def format_filter_sample_preview(points: List[dict], sample_source: str) -> str:
         )
     prefix = f"{sample_source}=" if sample_source else ""
     return prefix + "[" + ", ".join(preview_items) + "]"
+
+
+def rotate_points_xy(points: List[dict], yaw_deg: float) -> List[dict]:
+    if abs(float(yaw_deg)) <= 1e-6 or not points:
+        return points
+
+    yaw_rad = math.radians(float(yaw_deg))
+    cos_yaw = math.cos(yaw_rad)
+    sin_yaw = math.sin(yaw_rad)
+    rotated_points: List[dict] = []
+    for point in points:
+        x_val = float(point.get("x", 0.0))
+        y_val = float(point.get("y", 0.0))
+        rotated_point = dict(point)
+        rotated_point["x"] = (x_val * cos_yaw) - (y_val * sin_yaw)
+        rotated_point["y"] = (x_val * sin_yaw) + (y_val * cos_yaw)
+        rotated_points.append(rotated_point)
+    return rotated_points
 
 
 def build_keepout_boxes(
@@ -672,12 +820,160 @@ def build_static_clutter_boxes(
     ]
 
 
+def build_runtime_processing_context(
+    sensor_yaw_deg: float = 0.0,
+    snr_threshold: float = 8.0,
+    max_noise: Optional[float] = None,
+    min_range: float = 0.0,
+    max_range: Optional[float] = None,
+    filter_x_min: Optional[float] = None,
+    filter_x_max: Optional[float] = None,
+    filter_y_min: Optional[float] = None,
+    filter_y_max: Optional[float] = None,
+    filter_z_min: Optional[float] = None,
+    filter_z_max: Optional[float] = None,
+    disable_near_front_keepout: bool = False,
+    near_front_distance: float = 0.3,
+    near_front_half_width: float = 1.1,
+    near_front_z_min: float = -0.5,
+    near_front_z_max: float = 1.5,
+    disable_right_rail_keepout: bool = False,
+    right_rail_x: float = 1.8,
+    right_rail_width: float = 0.35,
+    right_rail_y_start: float = 0.0,
+    right_rail_length: float = 8.0,
+    right_rail_z_base: float = 0.0,
+    right_rail_height: float = 1.0,
+    right_rail_padding: float = 0.15,
+    disable_static_clutter_filter: bool = False,
+    static_clutter_padding: float = 0.25,
+    static_v_min: float = 0.12,
+    static_max_snr: float = 18.0,
+    filter_sample_count: int = 0,
+    dbscan_eps: float = 0.35,
+    dbscan_min_samples: int = 4,
+    use_velocity_feature: bool = False,
+    dbscan_velocity_weight: float = 0.25,
+    dbscan_adaptive_eps_bands: object = None,
+) -> RuntimeProcessingContext:
+    keepout_boxes = build_keepout_boxes(
+        near_front_enabled=not disable_near_front_keepout,
+        near_front_distance=near_front_distance,
+        near_front_half_width=near_front_half_width,
+        near_front_z_min=near_front_z_min,
+        near_front_z_max=near_front_z_max,
+        right_rail_enabled=not disable_right_rail_keepout,
+        right_rail_x=right_rail_x,
+        right_rail_width=right_rail_width,
+        right_rail_y_start=right_rail_y_start,
+        right_rail_length=right_rail_length,
+        right_rail_z_base=right_rail_z_base,
+        right_rail_height=right_rail_height,
+        right_rail_padding=right_rail_padding,
+    )
+    static_clutter_boxes = build_static_clutter_boxes(
+        enabled=not disable_static_clutter_filter,
+        right_rail_x=right_rail_x,
+        right_rail_width=right_rail_width,
+        right_rail_y_start=right_rail_y_start,
+        right_rail_length=right_rail_length,
+        right_rail_z_base=right_rail_z_base,
+        right_rail_height=right_rail_height,
+        right_rail_padding=right_rail_padding,
+        static_clutter_padding=static_clutter_padding,
+    )
+    return RuntimeProcessingContext(
+        sensor_yaw_deg=float(sensor_yaw_deg),
+        snr_threshold=float(snr_threshold),
+        max_noise=max_noise,
+        min_range=float(min_range),
+        max_range=max_range,
+        filter_x_min=filter_x_min,
+        filter_x_max=filter_x_max,
+        filter_y_min=filter_y_min,
+        filter_y_max=filter_y_max,
+        filter_z_min=filter_z_min,
+        filter_z_max=filter_z_max,
+        keepout_boxes=keepout_boxes,
+        static_clutter_boxes=static_clutter_boxes,
+        static_v_min=float(static_v_min),
+        static_max_snr=float(static_max_snr),
+        filter_sample_count=max(0, int(filter_sample_count)),
+        dbscan_eps=float(dbscan_eps),
+        dbscan_min_samples=max(1, int(dbscan_min_samples)),
+        use_velocity_feature=bool(use_velocity_feature),
+        dbscan_velocity_weight=float(dbscan_velocity_weight),
+        dbscan_adaptive_eps_bands=normalize_adaptive_eps_bands(dbscan_adaptive_eps_bands),
+    )
+
+
+def process_runtime_frame(
+    frame: ParsedFrame,
+    processing_context: RuntimeProcessingContext,
+    tracker: Optional[MultiObjectKalmanTracker] = None,
+    frame_ts: Optional[float] = None,
+) -> RuntimeFrameProcessingResult:
+    process_t0 = time.perf_counter()
+    effective_frame_ts = time.time() if frame_ts is None else float(frame_ts)
+
+    raw_points = points_dict_to_list(frame.points, frame.num_obj)
+    raw_points = rotate_points_xy(raw_points, processing_context.sensor_yaw_deg)
+    filtered_points, filter_stats = preprocess_points(
+        raw_points,
+        snr_threshold=processing_context.snr_threshold,
+        max_noise=processing_context.max_noise,
+        min_range=processing_context.min_range,
+        max_range=processing_context.max_range,
+        x_min=processing_context.filter_x_min,
+        x_max=processing_context.filter_x_max,
+        y_min=processing_context.filter_y_min,
+        y_max=processing_context.filter_y_max,
+        z_min=processing_context.filter_z_min,
+        z_max=processing_context.filter_z_max,
+        exclusion_boxes=processing_context.keepout_boxes,
+        static_clutter_boxes=processing_context.static_clutter_boxes,
+        static_v_min=processing_context.static_v_min,
+        static_max_snr=processing_context.static_max_snr,
+        sample_preview_count=processing_context.filter_sample_count,
+        return_stats=True,
+    )
+
+    clusters: List[dict] = []
+    dbscan_import_error: Optional[Exception] = None
+    try:
+        clusters = cluster_points(
+            filtered_points,
+            eps=processing_context.dbscan_eps,
+            min_samples=processing_context.dbscan_min_samples,
+            use_velocity_feature=processing_context.use_velocity_feature,
+            velocity_weight=processing_context.dbscan_velocity_weight,
+            adaptive_eps_bands=processing_context.dbscan_adaptive_eps_bands,
+        )
+    except ImportError as exc:
+        dbscan_import_error = exc
+
+    tracks: List[object] = []
+    if tracker is not None:
+        tracks = tracker.update(clusters, frame_ts=effective_frame_ts)
+
+    return RuntimeFrameProcessingResult(
+        raw_points=raw_points,
+        filtered_points=filtered_points,
+        filter_stats=filter_stats,
+        clusters=clusters,
+        tracks=tracks,
+        pipeline_latency_ms=(time.perf_counter() - process_t0) * 1000.0,
+        dbscan_import_error=dbscan_import_error,
+    )
+
+
 def run_realtime(
     cli_port_name: str,
     data_port_name: str,
     config_file: str,
     duration_sec: Optional[int] = None,
     debug: bool = False,
+    sensor_yaw_deg: float = 0.0,
     snr_threshold: float = 8.0,
     max_noise: Optional[float] = None,
     min_range: float = 0.0,
@@ -726,8 +1022,14 @@ def run_realtime(
     control_stop_distance: float = 0.4,
     control_resume_distance: float = 2.0,
     control_slow_speed_ratio: float = 0.4,
-    control_approach_speed_threshold: float = 0.1,
-    control_stopped_speed_threshold: float = 0.05,
+    control_approach_speed_threshold: float = 0.15,
+    control_stopped_speed_threshold: float = 0.06,
+    control_belt_axis_x: float = 0.0,
+    control_belt_axis_y: float = 1.0,
+    control_moving_confirm_sec: float = 0.3,
+    control_static_hold_sec: float = 0.8,
+    control_static_disp_window_sec: float = 0.8,
+    control_static_disp_threshold: float = 0.05,
     control_clear_frames: int = 3,
     control_out_port: Optional[str] = None,
     control_out_baudrate: int = 115200,
@@ -761,7 +1063,42 @@ def run_realtime(
     coord_preview_count = max(0, int(coord_preview_count))
     coord_preview_every = max(1, int(coord_preview_every))
     filter_sample_count = max(0, int(filter_sample_count))
-    dbscan_adaptive_eps_bands = normalize_adaptive_eps_bands(dbscan_adaptive_eps_bands)
+    processing_context = build_runtime_processing_context(
+        sensor_yaw_deg=sensor_yaw_deg,
+        snr_threshold=snr_threshold,
+        max_noise=max_noise,
+        min_range=min_range,
+        max_range=max_range,
+        filter_x_min=filter_x_min,
+        filter_x_max=filter_x_max,
+        filter_y_min=filter_y_min,
+        filter_y_max=filter_y_max,
+        filter_z_min=filter_z_min,
+        filter_z_max=filter_z_max,
+        disable_near_front_keepout=disable_near_front_keepout,
+        near_front_distance=near_front_distance,
+        near_front_half_width=near_front_half_width,
+        near_front_z_min=near_front_z_min,
+        near_front_z_max=near_front_z_max,
+        disable_right_rail_keepout=disable_right_rail_keepout,
+        right_rail_x=right_rail_x,
+        right_rail_width=right_rail_width,
+        right_rail_y_start=right_rail_y_start,
+        right_rail_length=right_rail_length,
+        right_rail_z_base=right_rail_z_base,
+        right_rail_height=right_rail_height,
+        right_rail_padding=right_rail_padding,
+        disable_static_clutter_filter=disable_static_clutter_filter,
+        static_clutter_padding=static_clutter_padding,
+        static_v_min=static_v_min,
+        static_max_snr=static_max_snr,
+        filter_sample_count=filter_sample_count,
+        dbscan_eps=dbscan_eps,
+        dbscan_min_samples=dbscan_min_samples,
+        use_velocity_feature=use_velocity_feature,
+        dbscan_velocity_weight=dbscan_velocity_weight,
+        dbscan_adaptive_eps_bands=dbscan_adaptive_eps_bands,
+    )
 
     total_packet_bytes = 0
     total_num_obj = 0
@@ -781,33 +1118,6 @@ def run_realtime(
     total_removed_right_rail_keepout = 0
     total_removed_static_clutter = 0
     prev_frame_number: Optional[int] = None
-
-    keepout_boxes = build_keepout_boxes(
-        near_front_enabled=not disable_near_front_keepout,
-        near_front_distance=near_front_distance,
-        near_front_half_width=near_front_half_width,
-        near_front_z_min=near_front_z_min,
-        near_front_z_max=near_front_z_max,
-        right_rail_enabled=not disable_right_rail_keepout,
-        right_rail_x=right_rail_x,
-        right_rail_width=right_rail_width,
-        right_rail_y_start=right_rail_y_start,
-        right_rail_length=right_rail_length,
-        right_rail_z_base=right_rail_z_base,
-        right_rail_height=right_rail_height,
-        right_rail_padding=right_rail_padding,
-    )
-    static_clutter_boxes = build_static_clutter_boxes(
-        enabled=not disable_static_clutter_filter,
-        right_rail_x=right_rail_x,
-        right_rail_width=right_rail_width,
-        right_rail_y_start=right_rail_y_start,
-        right_rail_length=right_rail_length,
-        right_rail_z_base=right_rail_z_base,
-        right_rail_height=right_rail_height,
-        right_rail_padding=right_rail_padding,
-        static_clutter_padding=static_clutter_padding,
-    )
 
     if control_enabled:
         required_zone_args = {
@@ -836,13 +1146,23 @@ def run_realtime(
             slow_speed_ratio=control_slow_speed_ratio,
             approach_speed_threshold=control_approach_speed_threshold,
             stationary_speed_threshold=control_stopped_speed_threshold,
+            belt_axis_x=control_belt_axis_x,
+            belt_axis_y=control_belt_axis_y,
+            moving_confirm_sec=control_moving_confirm_sec,
+            static_hold_sec=control_static_hold_sec,
+            static_disp_window_sec=control_static_disp_window_sec,
+            static_disp_threshold=control_static_disp_threshold,
             clear_frames_required=control_clear_frames,
         )
         emit_log(
             "[CTRL] enabled "
             f"zone={control_zone.describe()} slow_dist={control_slow_distance:.2f} "
             f"stop_dist={control_stop_distance:.2f} resume_dist={control_resume_distance:.2f} "
-            f"slow_speed={control_slow_speed_ratio:.2f}"
+            f"slow_speed={control_slow_speed_ratio:.2f} "
+            f"belt_axis=({control_belt_axis_x:.2f},{control_belt_axis_y:.2f}) "
+            f"v_move={control_approach_speed_threshold:.2f} v_static={control_stopped_speed_threshold:.2f} "
+            f"moving_confirm={control_moving_confirm_sec:.2f}s static_hold={control_static_hold_sec:.2f}s "
+            f"static_disp_window={control_static_disp_window_sec:.2f}s static_disp={control_static_disp_threshold:.2f}m"
         )
         if control_out_port is not None:
             control_writer = ControlPacketSerialWriter(
@@ -871,6 +1191,7 @@ def run_realtime(
         emit_log(f"[PARAMS] file={params_file_text or 'cli/defaults'}")
         emit_log(
             "[FILTER_CFG] "
+            f"sensor_yaw={sensor_yaw_deg:.1f}deg "
             f"axis_roi=x[{filter_x_min if filter_x_min is not None else '-inf'},{filter_x_max if filter_x_max is not None else 'inf'}] "
             f"y[{filter_y_min if filter_y_min is not None else '-inf'},{filter_y_max if filter_y_max is not None else 'inf'}] "
             f"z[{filter_z_min if filter_z_min is not None else '-inf'},{filter_z_max if filter_z_max is not None else 'inf'}] "
@@ -879,7 +1200,8 @@ def run_realtime(
             f"static_clutter={'on' if not disable_static_clutter_filter else 'off'} "
             f"static_v_min={static_v_min:.2f} static_max_snr={static_max_snr:.2f}"
         )
-        if dbscan_adaptive_eps_bands:
+        if processing_context.dbscan_adaptive_eps_bands:
+            adaptive_bands = processing_context.dbscan_adaptive_eps_bands
             adaptive_desc = ", ".join(
                 f"{band['description']}=>eps:{band['eps']:.2f}"
                 + (
@@ -887,7 +1209,7 @@ def run_realtime(
                     if band.get("min_samples") is not None
                     else ""
                 )
-                for band in dbscan_adaptive_eps_bands
+                for band in adaptive_bands
             )
             emit_log(f"[DBSCAN_CFG] adaptive_bands={adaptive_desc}")
         else:
@@ -908,54 +1230,30 @@ def run_realtime(
             while True:
                 frame = reader.read_frame(data_port)
                 if frame is not None:
-                    process_t0 = time.perf_counter()
                     now = time.time()
+                    control_now = time.monotonic()
                     processed_frames += 1
 
-                    raw_points = points_dict_to_list(frame.points, frame.num_obj)
-                    filtered_points, filter_stats = preprocess_points(
-                        raw_points,
-                        snr_threshold=snr_threshold,
-                        max_noise=max_noise,
-                        min_range=min_range,
-                        max_range=max_range,
-                        x_min=filter_x_min,
-                        x_max=filter_x_max,
-                        y_min=filter_y_min,
-                        y_max=filter_y_max,
-                        z_min=filter_z_min,
-                        z_max=filter_z_max,
-                        exclusion_boxes=keepout_boxes,
-                        static_clutter_boxes=static_clutter_boxes,
-                        static_v_min=static_v_min,
-                        static_max_snr=static_max_snr,
-                        sample_preview_count=filter_sample_count,
-                        return_stats=True,
+                    frame_result = process_runtime_frame(
+                        frame,
+                        processing_context,
+                        tracker=tracker,
+                        frame_ts=now,
                     )
-
-                    clusters = []
-                    try:
-                        clusters = cluster_points(
-                            filtered_points,
-                            eps=dbscan_eps,
-                            min_samples=dbscan_min_samples,
-                            use_velocity_feature=use_velocity_feature,
-                            velocity_weight=dbscan_velocity_weight,
-                            adaptive_eps_bands=dbscan_adaptive_eps_bands,
-                        )
-                    except ImportError as exc:
-                        if not dbscan_import_error_printed:
-                            emit_log(f"[WARN] DBSCAN disabled: {exc}")
-                            dbscan_import_error_printed = True
-
-                    tracks = []
-                    if tracker is not None:
-                        tracks = tracker.update(clusters, frame_ts=now)
+                    raw_points = frame_result.raw_points
+                    filtered_points = frame_result.filtered_points
+                    filter_stats = frame_result.filter_stats
+                    clusters = frame_result.clusters
+                    tracks = frame_result.tracks
+                    pipeline_latency_ms = frame_result.pipeline_latency_ms
+                    if frame_result.dbscan_import_error is not None and not dbscan_import_error_printed:
+                        emit_log(f"[WARN] DBSCAN disabled: {frame_result.dbscan_import_error}")
+                        dbscan_import_error_printed = True
 
                     control_decision = None
                     if speed_controller is not None:
                         control_inputs = tracks if tracks else clusters
-                        control_decision = speed_controller.update(control_inputs)
+                        control_decision = speed_controller.update(control_inputs, frame_ts=control_now)
                         if control_decision.changed or control_decision.command != "RESUME":
                             zone_dist_text = (
                                 f"{control_decision.zone_distance_m:.2f}"
@@ -967,11 +1265,22 @@ def run_realtime(
                                 if control_decision.closing_speed_mps is not None
                                 else "n/a"
                             )
+                            belt_speed_text = (
+                                f"{control_decision.belt_speed_mps:.2f}"
+                                if control_decision.belt_speed_mps is not None
+                                else "n/a"
+                            )
+                            belt_disp_text = (
+                                f"{control_decision.belt_displacement_m:.2f}"
+                                if control_decision.belt_displacement_m is not None
+                                else "n/a"
+                            )
                             track_text = control_decision.track_id if control_decision.track_id is not None else "-"
                             emit_log(
                                 f"[CTRL] event={control_decision.primary_event} cmd={control_decision.command} "
-                                f"speed={control_decision.speed_ratio:.2f} track={track_text} "
-                                f"dist={zone_dist_text}m closing={closing_text}mps"
+                                f"state={control_decision.state} speed={control_decision.speed_ratio:.2f} "
+                                f"track={track_text} dist={zone_dist_text}m closing={closing_text}mps "
+                                f"belt_v={belt_speed_text}mps belt_ds={belt_disp_text}m"
                             )
                         if control_writer is not None:
                             encoded_packet = control_writer.send_decision(control_decision)
@@ -981,7 +1290,6 @@ def run_realtime(
                                     f"cmd={control_decision.command} pct={encoded_packet.speed_ratio_pct}"
                                 )
 
-                    pipeline_latency_ms = (time.perf_counter() - process_t0) * 1000.0
                     frame_gap = 0 if prev_frame_number is None else max(0, frame.frame_number - prev_frame_number - 1)
                     prev_frame_number = frame.frame_number
 
@@ -1019,6 +1327,10 @@ def run_realtime(
                         cluster_preview = format_cluster_preview(clusters, coord_preview_count)
                         track_preview = format_track_preview(tracks, coord_preview_count)
 
+                    primary_cluster = select_primary_cluster(clusters)
+                    primary_track = select_primary_track(tracks)
+                    primary_target_summary = format_primary_target_summary(primary_cluster, primary_track)
+
                     frame_summary = format_frame_summary(
                         frame=frame,
                         frame_gap=frame_gap,
@@ -1031,6 +1343,8 @@ def run_realtime(
                     )
                     emit_log(frame_summary)
                     emit_log(f"  {filter_stats_summary}")
+                    if primary_target_summary:
+                        emit_log(f"  {primary_target_summary}")
                     if filter_sample_preview:
                         emit_log(f"  filter_sample={filter_sample_preview}")
                     if filtered_preview:
@@ -1068,6 +1382,21 @@ def run_realtime(
                             "raw_range_max": round(filter_stats.raw_range_max, 3) if filter_stats.raw_range_max is not None else "",
                             "filtered_range_min": round(filter_stats.filtered_range_min, 3) if filter_stats.filtered_range_min is not None else "",
                             "filtered_range_max": round(filter_stats.filtered_range_max, 3) if filter_stats.filtered_range_max is not None else "",
+                            "primary_cluster_label": primary_cluster.get("label", "") if primary_cluster is not None else "",
+                            "primary_cluster_range_m": round(_cluster_range_m(primary_cluster), 3) if primary_cluster is not None else "",
+                            "primary_cluster_size": int(primary_cluster.get("size", 0)) if primary_cluster is not None else "",
+                            "primary_cluster_confidence": (
+                                round(float(primary_cluster.get("confidence", 0.0)), 3)
+                                if primary_cluster is not None
+                                else ""
+                            ),
+                            "primary_track_id": getattr(primary_track, "track_id", "") if primary_track is not None else "",
+                            "primary_track_range_m": round(_track_range_m(primary_track), 3) if primary_track is not None else "",
+                            "primary_track_confidence": (
+                                round(float(getattr(primary_track, "confidence", 0.0)), 3)
+                                if primary_track is not None
+                                else ""
+                            ),
                             "removed_snr": filter_stats.removed_snr,
                             "removed_noise": filter_stats.removed_noise,
                             "removed_range": filter_stats.removed_range,
@@ -1078,6 +1407,7 @@ def run_realtime(
                             "removed_static_clutter": filter_stats.removed_static_clutter,
                             "control_command": control_decision.command if control_decision is not None else "",
                             "control_event": control_decision.primary_event if control_decision is not None else "",
+                            "control_state": control_decision.state if control_decision is not None else "",
                             "control_speed_ratio": round(control_decision.speed_ratio, 3) if control_decision is not None else "",
                             "control_track_id": control_decision.track_id if control_decision is not None else "",
                             "control_zone_distance_m": (
@@ -1088,6 +1418,16 @@ def run_realtime(
                             "control_closing_speed_mps": (
                                 round(control_decision.closing_speed_mps, 3)
                                 if control_decision is not None and control_decision.closing_speed_mps is not None
+                                else ""
+                            ),
+                            "control_belt_speed_mps": (
+                                round(control_decision.belt_speed_mps, 3)
+                                if control_decision is not None and control_decision.belt_speed_mps is not None
+                                else ""
+                            ),
+                            "control_belt_displacement_m": (
+                                round(control_decision.belt_displacement_m, 3)
+                                if control_decision is not None and control_decision.belt_displacement_m is not None
                                 else ""
                             ),
                             "control_state_changed": int(control_decision.changed) if control_decision is not None else "",
@@ -1164,11 +1504,21 @@ def run_realtime(
             if control_writer is not None:
                 control_writer.close()
 
+            overview_png_path: Optional[Path] = None
+            if not disable_file_log and logger.frame_log_path is not None:
+                logger.close_frame_log()
+                try:
+                    overview_png_path = render_runtime_log_overview_png(logger.frame_log_path)
+                except Exception as exc:
+                    emit_log(f"[WARN] failed to render overview PNG: {exc}")
+
             if not disable_file_log:
                 emit_log(f"[LOG] frame_log={logger.frame_log_path}")
                 if logger.text_log_path is not None:
                     emit_log(f"[LOG] text_log={logger.text_log_path}")
                 emit_log(f"[LOG] summary_log={logger.summary_log_path}")
+                if overview_png_path is not None:
+                    emit_log(f"[LOG] overview_png={overview_png_path}")
             emit_log(
                 "[SUMMARY] "
                 f"frames={frames} avg_fps={summary['avg_fps']:.2f} avg_packet={summary['avg_packet_bytes']:.1f}B "
@@ -1191,6 +1541,7 @@ def build_arg_parser(defaults: Dict[str, object]) -> argparse.ArgumentParser:
     parser.add_argument("--config", required=True, help="Path to mmWave cfg file")
     parser.add_argument("--duration", type=int, default=None, help="Run duration in seconds")
     parser.add_argument("--debug", action="store_true", help="Enable parser debug output")
+    parser.add_argument("--sensor-yaw-deg", type=float, default=defaults["sensor_yaw_deg"])
 
     parser.add_argument("--snr-threshold", type=float, default=defaults["snr_threshold"])
     parser.add_argument("--max-noise", type=float, default=defaults["max_noise"])
@@ -1251,6 +1602,12 @@ def build_arg_parser(defaults: Dict[str, object]) -> argparse.ArgumentParser:
     parser.add_argument("--control-slow-speed-ratio", type=float, default=defaults["control_slow_speed_ratio"])
     parser.add_argument("--control-approach-speed-threshold", type=float, default=defaults["control_approach_speed_threshold"])
     parser.add_argument("--control-stopped-speed-threshold", type=float, default=defaults["control_stopped_speed_threshold"])
+    parser.add_argument("--control-belt-axis-x", type=float, default=defaults["control_belt_axis_x"])
+    parser.add_argument("--control-belt-axis-y", type=float, default=defaults["control_belt_axis_y"])
+    parser.add_argument("--control-moving-confirm-sec", type=float, default=defaults["control_moving_confirm_sec"])
+    parser.add_argument("--control-static-hold-sec", type=float, default=defaults["control_static_hold_sec"])
+    parser.add_argument("--control-static-disp-window-sec", type=float, default=defaults["control_static_disp_window_sec"])
+    parser.add_argument("--control-static-disp-threshold", type=float, default=defaults["control_static_disp_threshold"])
     parser.add_argument("--control-clear-frames", type=int, default=defaults["control_clear_frames"])
     parser.add_argument("--control-out-port", default=defaults["control_out_port"])
     parser.add_argument("--control-out-baudrate", type=int, default=defaults["control_out_baudrate"])
@@ -1290,6 +1647,7 @@ def main() -> None:
             config_file=args.config,
             duration_sec=args.duration,
             debug=args.debug,
+            sensor_yaw_deg=args.sensor_yaw_deg,
             snr_threshold=args.snr_threshold,
             max_noise=args.max_noise,
             min_range=args.min_range,
@@ -1340,6 +1698,12 @@ def main() -> None:
             control_slow_speed_ratio=args.control_slow_speed_ratio,
             control_approach_speed_threshold=args.control_approach_speed_threshold,
             control_stopped_speed_threshold=args.control_stopped_speed_threshold,
+            control_belt_axis_x=args.control_belt_axis_x,
+            control_belt_axis_y=args.control_belt_axis_y,
+            control_moving_confirm_sec=args.control_moving_confirm_sec,
+            control_static_hold_sec=args.control_static_hold_sec,
+            control_static_disp_window_sec=args.control_static_disp_window_sec,
+            control_static_disp_threshold=args.control_static_disp_threshold,
             control_clear_frames=args.control_clear_frames,
             control_out_port=args.control_out_port,
             control_out_baudrate=args.control_out_baudrate,

@@ -1,6 +1,9 @@
 {
+  "sensor": {
+    "sensor_yaw_deg": 0.0
+  },
   "filter": {
-    "snr_threshold": 8.0,
+    "snr_threshold": 110.0,
     "max_noise": null,
     "min_range": 0.0,
     "max_range": 3.0,
@@ -25,22 +28,22 @@
     "right_rail_length": 8.0,
     "right_rail_z_base": 0.0,
     "right_rail_height": 1.0,
-    "right_rail_padding": 0.15
+    "right_rail_padding": 0.05
   },
   "static_clutter": {
     "disable_static_clutter_filter": false,
     "static_clutter_padding": 0.25,
     "static_v_min": 0.12,
-    "static_max_snr": 18.0
+    "static_max_snr": 180.0
   },
   "clustering": {
     "dbscan_eps": 0.35,
-    "dbscan_min_samples": 4,
+    "dbscan_min_samples": 3,
     "use_velocity_feature": false,
     "dbscan_velocity_weight": 0.25,
     "dbscan_adaptive_eps_bands": [
-      { "r_min": 0.0, "r_max": 1.4, "eps": 0.20 },
-      { "r_min": 1.4, "r_max": null, "eps": 0.35 }
+      { "r_min": 0.0, "r_max": 1.4, "eps": 0.22 },
+      { "r_min": 1.4, "r_max": null, "eps": 0.45 }
     ]
   },
   "tracking": {
@@ -61,8 +64,14 @@
     "control_stop_distance": 0.4,
     "control_resume_distance": 2.0,
     "control_slow_speed_ratio": 0.4,
-    "control_approach_speed_threshold": 0.1,
-    "control_stopped_speed_threshold": 0.05,
+    "control_approach_speed_threshold": 0.15,
+    "control_stopped_speed_threshold": 0.06,
+    "control_belt_axis_x": 0.0,
+    "control_belt_axis_y": 1.0,
+    "control_moving_confirm_sec": 0.3,
+    "control_static_hold_sec": 0.8,
+    "control_static_disp_window_sec": 0.8,
+    "control_static_disp_threshold": 0.05,
     "control_clear_frames": 3,
     "control_out_port": null,
     "control_out_baudrate": 115200,
@@ -84,6 +93,11 @@
     "y_max": 8.0,
     "z_min": -1.0,
     "z_max": 2.0,
-    "max_vis_fps": 10.0
+    "max_vis_fps": 10.0,
+    "point_persistence_frames": 6,
+    "track_history_sec": 2.5,
+    "track_history_points": 40,
+    "velocity_arrow_scale": 0.8,
+    "velocity_min_speed": 0.08
   }
 }
