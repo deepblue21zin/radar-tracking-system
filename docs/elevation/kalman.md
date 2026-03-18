@@ -36,6 +36,14 @@
 - velocity measurement 활용 여부 검토
 - confidence 설계 개선
 
+### 발표/차별화용 backlog
+- FilterPy는 수식 계산 엔진으로 두고, `state model`, `gate`, `association`, `track lifecycle`는 우리 로직으로 더 분리
+- tentative / confirmed / deleted 상태머신 추가
+- `cluster size`, `confidence`, `snr`에 따라 adaptive `R` 적용 검토
+- missed detection 상황에서 hold / reacquire 정책을 직접 설계
+- Euclidean gate와 Mahalanobis gate를 비교해 어떤 조건에서 ID switch가 줄어드는지 측정
+- `baseline tracker vs tuned tracker` 비교표를 만들어 "우리가 바꾼 뒤 continuity가 어떻게 좋아졌는지" 증명
+
 ### 테스트/재현성
 - 단일 객체 60초 continuity 테스트
 - 2객체 교차 시나리오 테스트
@@ -62,3 +70,4 @@
 ## 업데이트 로그
 - 2026-03-14: 현재 tracker baseline 구현 상태 기준 완료 항목 취소선 정리
 - 2026-03-14: association / metric 중심 backlog 재정리
+- 2026-03-15: 발표용 차별화 backlog 추가

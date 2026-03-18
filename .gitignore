@@ -208,3 +208,6 @@ __marimo__/
 
 # Runtime experiment logs
 evidence/runtime_logs/
+
+# Doxygen generated documentation
+docs/doxygen/

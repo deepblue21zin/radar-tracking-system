@@ -41,6 +41,9 @@
 - `filter.md`
 - `DBSCAN.md`
 - `kalman.md`
+- `runtime_issue_fix_plan.md`
+- `ownership_plan.md`
+- `visualization.md`
 
 ## 공통 운영 기준
 - 기준 시점: 2026-03-14
