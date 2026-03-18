@@ -15,7 +15,7 @@ import serial
 try:
     from .tlv_packet_parser import MAGIC_WORD, parser_one_mmw_demo_output_packet
     from ..filter.noise_filter import AxisAlignedBox, FilterStats, points_dict_to_list, preprocess_points
-    from ..cluster.dbscan_cluster import cluster_points
+    from ..cluster.dbscan_cluster import cluster_points, normalize_adaptive_eps_bands
     from ..tracking.kalman_tracker import MultiObjectKalmanTracker
     from ..control.proximity_speed_control import ControlZone, ProximitySpeedController
     from ..communication.control_protocol import ControlPacketSerialWriter
@@ -30,7 +30,7 @@ except ImportError:
         sys.path.insert(0, str(src_root))
     from tlv_packet_parser import MAGIC_WORD, parser_one_mmw_demo_output_packet
     from filter.noise_filter import AxisAlignedBox, FilterStats, points_dict_to_list, preprocess_points
-    from cluster.dbscan_cluster import cluster_points
+    from cluster.dbscan_cluster import cluster_points, normalize_adaptive_eps_bands
     from tracking.kalman_tracker import MultiObjectKalmanTracker
     from control.proximity_speed_control import ControlZone, ProximitySpeedController
     from communication.control_protocol import ControlPacketSerialWriter
@@ -79,6 +79,7 @@ RUNNER_PARAM_DEFAULT_KEYS = (
     "dbscan_min_samples",
     "use_velocity_feature",
     "dbscan_velocity_weight",
+    "dbscan_adaptive_eps_bands",
     "association_gate",
     "max_misses",
     "min_hits",
@@ -709,6 +710,7 @@ def run_realtime(
     dbscan_min_samples: int = 4,
     use_velocity_feature: bool = False,
     dbscan_velocity_weight: float = 0.25,
+    dbscan_adaptive_eps_bands: object = None,
     association_gate: float = 1.5,
     max_misses: int = 8,
     min_hits: int = 2,
@@ -759,6 +761,7 @@ def run_realtime(
     coord_preview_count = max(0, int(coord_preview_count))
     coord_preview_every = max(1, int(coord_preview_every))
     filter_sample_count = max(0, int(filter_sample_count))
+    dbscan_adaptive_eps_bands = normalize_adaptive_eps_bands(dbscan_adaptive_eps_bands)
 
     total_packet_bytes = 0
     total_num_obj = 0
@@ -876,6 +879,22 @@ def run_realtime(
             f"static_clutter={'on' if not disable_static_clutter_filter else 'off'} "
             f"static_v_min={static_v_min:.2f} static_max_snr={static_max_snr:.2f}"
         )
+        if dbscan_adaptive_eps_bands:
+            adaptive_desc = ", ".join(
+                f"{band['description']}=>eps:{band['eps']:.2f}"
+                + (
+                    f"/min:{int(band['min_samples'])}"
+                    if band.get("min_samples") is not None
+                    else ""
+                )
+                for band in dbscan_adaptive_eps_bands
+            )
+            emit_log(f"[DBSCAN_CFG] adaptive_bands={adaptive_desc}")
+        else:
+            emit_log(
+                f"[DBSCAN_CFG] eps={dbscan_eps:.2f} min_samples={dbscan_min_samples} "
+                f"velocity_weight={dbscan_velocity_weight:.2f}"
+            )
         send_config(cli_port, config_path)
         time.sleep(0.2)
         data_port.reset_input_buffer()
@@ -922,6 +941,7 @@ def run_realtime(
                             min_samples=dbscan_min_samples,
                             use_velocity_feature=use_velocity_feature,
                             velocity_weight=dbscan_velocity_weight,
+                            adaptive_eps_bands=dbscan_adaptive_eps_bands,
                         )
                     except ImportError as exc:
                         if not dbscan_import_error_printed:
@@ -1205,6 +1225,14 @@ def build_arg_parser(defaults: Dict[str, object]) -> argparse.ArgumentParser:
     parser.add_argument("--dbscan-min-samples", type=int, default=defaults["dbscan_min_samples"])
     parser.add_argument("--use-velocity-feature", action="store_true", default=defaults["use_velocity_feature"])
     parser.add_argument("--dbscan-velocity-weight", type=float, default=defaults["dbscan_velocity_weight"])
+    parser.add_argument(
+        "--dbscan-adaptive-eps-bands",
+        default=defaults["dbscan_adaptive_eps_bands"],
+        help=(
+            "Adaptive DBSCAN range bands. Accepts JSON list or compact "
+            "'r_min:r_max:eps[:min_samples],...' format."
+        ),
+    )
 
     parser.add_argument("--association-gate", type=float, default=defaults["association_gate"])
     parser.add_argument("--max-misses", type=int, default=defaults["max_misses"])
@@ -1244,6 +1272,10 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
     params_path, defaults = resolve_runtime_param_defaults(argv, RUNNER_PARAM_DEFAULTS)
     parser = build_arg_parser(defaults)
     args = parser.parse_args(argv)
+    try:
+        args.dbscan_adaptive_eps_bands = normalize_adaptive_eps_bands(args.dbscan_adaptive_eps_bands)
+    except ValueError as exc:
+        parser.error(str(exc))
     args.params_file = str(params_path)
     return args
 
@@ -1290,6 +1322,7 @@ def main() -> None:
             dbscan_min_samples=args.dbscan_min_samples,
             use_velocity_feature=args.use_velocity_feature,
             dbscan_velocity_weight=args.dbscan_velocity_weight,
+            dbscan_adaptive_eps_bands=args.dbscan_adaptive_eps_bands,
             association_gate=args.association_gate,
             max_misses=args.max_misses,
             min_hits=args.min_hits,
