@@ -1,5 +1,8 @@
 # Radar Tracking System 아키텍처 분석 명세서
 
+> 참고: 이 문서는 `2026-03-02` 기준 초기 분석 스냅샷이다.  
+> 현재 실행 구조는 `README.md`, `docs/architecture.md`, `docs/doxygen_overview.md`, `docs/study/study_runtime_pipeline_and_control.md`를 우선 참고한다.
+
 ## 1. 문서 목적
 현재 `radar-tracking-system`의 폴더 구조와 초기 코드 상태를 기준으로,
 - 모듈 경계

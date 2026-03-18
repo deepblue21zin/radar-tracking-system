@@ -1,0 +1,85 @@
+{
+  "filter": {
+    "snr_threshold": 8.0,
+    "max_noise": null,
+    "min_range": 0.0,
+    "max_range": 3.0,
+    "filter_x_min": null,
+    "filter_x_max": null,
+    "filter_y_min": null,
+    "filter_y_max": null,
+    "filter_z_min": -0.6,
+    "filter_z_max": 1.0,
+    "filter_sample_count": 2
+  },
+  "keepout": {
+    "disable_near_front_keepout": false,
+    "near_front_distance": 0.3,
+    "near_front_half_width": 1.1,
+    "near_front_z_min": -0.5,
+    "near_front_z_max": 1.5,
+    "disable_right_rail_keepout": false,
+    "right_rail_x": 1.8,
+    "right_rail_width": 0.35,
+    "right_rail_y_start": 0.0,
+    "right_rail_length": 8.0,
+    "right_rail_z_base": 0.0,
+    "right_rail_height": 1.0,
+    "right_rail_padding": 0.15
+  },
+  "static_clutter": {
+    "disable_static_clutter_filter": false,
+    "static_clutter_padding": 0.25,
+    "static_v_min": 0.12,
+    "static_max_snr": 18.0
+  },
+  "clustering": {
+    "dbscan_eps": 0.6,
+    "dbscan_min_samples": 4,
+    "use_velocity_feature": false,
+    "dbscan_velocity_weight": 0.25
+  },
+  "tracking": {
+    "association_gate": 1.5,
+    "max_misses": 8,
+    "min_hits": 2,
+    "report_miss_tolerance": 0
+  },
+  "control": {
+    "control_enabled": false,
+    "control_zone_x_min": null,
+    "control_zone_x_max": null,
+    "control_zone_y_min": null,
+    "control_zone_y_max": null,
+    "control_zone_z_min": null,
+    "control_zone_z_max": null,
+    "control_slow_distance": 1.5,
+    "control_stop_distance": 0.4,
+    "control_resume_distance": 2.0,
+    "control_slow_speed_ratio": 0.4,
+    "control_approach_speed_threshold": 0.1,
+    "control_stopped_speed_threshold": 0.05,
+    "control_clear_frames": 3,
+    "control_out_port": null,
+    "control_out_baudrate": 115200,
+    "control_out_heartbeat_ms": 200
+  },
+  "logging": {
+    "scenario": "live_run",
+    "roi_tag": "",
+    "disable_file_log": false
+  },
+  "preview": {
+    "coord_preview_count": 0,
+    "coord_preview_every": 1
+  },
+  "viewer": {
+    "x_min": -2.5,
+    "x_max": 2.5,
+    "y_min": 0.0,
+    "y_max": 8.0,
+    "z_min": -1.0,
+    "z_max": 2.0,
+    "max_vis_fps": 10.0
+  }
+}

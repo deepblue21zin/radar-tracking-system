@@ -6,6 +6,8 @@ from typing import List, Optional, Tuple
 import math
 import sys
 
+import numpy as np
+
 
 def _load_filterpy():
     """Import filterpy from site-packages or local vendor folder."""
@@ -55,6 +57,7 @@ class MultiObjectKalmanTracker:
         association_gate: float = 1.5,
         max_misses: int = 8,
         min_hits: int = 2,
+        report_miss_tolerance: int = 0,
     ):
         KalmanFilter, Q_discrete_white_noise = _load_filterpy()
         self._KalmanFilter = KalmanFilter
@@ -65,19 +68,24 @@ class MultiObjectKalmanTracker:
         self.association_gate = association_gate
         self.max_misses = max_misses
         self.min_hits = min_hits
+        self.report_miss_tolerance = max(0, int(report_miss_tolerance))
 
         self._tracks: List[_Track] = []
         self._next_track_id = 1
 
     def _build_kf(self, measurement: dict):
         kf = self._KalmanFilter(dim_x=4, dim_z=2)
-        kf.x = [[measurement["x"]], [measurement["y"]], [0.0], [0.0]]
-        kf.F = [[1.0, 0.0, 1.0, 0.0], [0.0, 1.0, 0.0, 1.0], [0.0, 0.0, 1.0, 0.0], [0.0, 0.0, 0.0, 1.0]]
-        kf.H = [[1.0, 0.0, 0.0, 0.0], [0.0, 1.0, 0.0, 0.0]]
-        kf.P *= 20.0
-        kf.R *= self.measurement_var
+        kf.x = np.array([[measurement["x"]], [measurement["y"]], [0.0], [0.0]], dtype=float)
+        kf.F = np.array(
+            [[1.0, 0.0, 1.0, 0.0], [0.0, 1.0, 0.0, 1.0], [0.0, 0.0, 1.0, 0.0], [0.0, 0.0, 0.0, 1.0]],
+            dtype=float,
+        )
+        kf.H = np.array([[1.0, 0.0, 0.0, 0.0], [0.0, 1.0, 0.0, 0.0]], dtype=float)
+        kf.P = np.eye(4, dtype=float) * 20.0
+        kf.R = np.eye(2, dtype=float) * self.measurement_var
         q = self._Q_discrete_white_noise(dim=2, dt=1.0, var=self.process_var)
-        kf.Q = [[q[0][0], q[0][1], 0.0, 0.0], [q[1][0], q[1][1], 0.0, 0.0], [0.0, 0.0, q[0][0], q[0][1]], [0.0, 0.0, q[1][0], q[1][1]]]
+        zeros = np.zeros((2, 2), dtype=float)
+        kf.Q = np.block([[q, zeros], [zeros, q]])
         return kf
 
     @staticmethod
@@ -88,8 +96,8 @@ class MultiObjectKalmanTracker:
 
     def _predict(self, dt: float) -> None:
         for trk in self._tracks:
-            trk.kf.F[0][2] = dt
-            trk.kf.F[1][3] = dt
+            trk.kf.F[0, 2] = dt
+            trk.kf.F[1, 3] = dt
             trk.kf.predict()
             trk.age += 1
             trk.misses += 1
@@ -138,7 +146,7 @@ class MultiObjectKalmanTracker:
         for ti, mi in matched:
             trk = self._tracks[ti]
             meas = measurements[mi]
-            z = [[float(meas["x"])], [float(meas["y"])]]
+            z = np.array([[float(meas["x"])], [float(meas["y"])]], dtype=float)
             trk.kf.update(z)
             trk.hits += 1
             trk.misses = 0
@@ -157,6 +165,8 @@ class MultiObjectKalmanTracker:
         outputs: List[TrackOutput] = []
         for trk in self._tracks:
             if trk.hits < self.min_hits:
+                continue
+            if trk.misses > self.report_miss_tolerance:
                 continue
             outputs.append(
                 TrackOutput(

@@ -186,7 +186,7 @@ AA 14 9C 02 01 04 03 06 05 08 07 ...
 
 ## 6.3 현재 코드에서 어떻게 찾나
 현재 코드는 버퍼 안에서 magic word를 찾는다.  
-[src/parser/tlv_parse_runner.py:202](/d:/capstone_radar/ti_toolbox/radar-tracking-system/radar-tracking-system/src/parser/tlv_parse_runner.py#L202)
+[src/parser/runtime_pipeline.py:346](/d:/capstone_radar/ti_toolbox/radar-tracking-system/radar-tracking-system/src/parser/runtime_pipeline.py#L346)
 
 ```python
 start_idx = buffer_view.find(MAGIC_WORD)
@@ -200,7 +200,7 @@ start_idx = buffer_view.find(MAGIC_WORD)
 
 ## 6.4 못 찾았을 때 왜 마지막 7바이트만 남기나
 현재 코드는 magic word를 못 찾으면 버퍼 대부분을 버리고 `마지막 7바이트`만 남긴다.  
-[src/parser/tlv_parse_runner.py:204](/d:/capstone_radar/ti_toolbox/radar-tracking-system/radar-tracking-system/src/parser/tlv_parse_runner.py#L204)
+[src/parser/runtime_pipeline.py:348](/d:/capstone_radar/ti_toolbox/radar-tracking-system/radar-tracking-system/src/parser/runtime_pipeline.py#L348)
 
 이유는 magic word가 8바이트라서, 다음 read에서 앞부분이 이어질 수 있기 때문이다.
 
@@ -249,7 +249,7 @@ start_idx = buffer_view.find(MAGIC_WORD)
 
 ## 7.3 현재 코드에서 버퍼는 어떻게 구현되나
 현재 코드는 `bytearray`로 버퍼를 관리한다.  
-[src/parser/tlv_parse_runner.py:164](/d:/capstone_radar/ti_toolbox/radar-tracking-system/radar-tracking-system/src/parser/tlv_parse_runner.py#L164)
+[src/parser/runtime_pipeline.py:310](/d:/capstone_radar/ti_toolbox/radar-tracking-system/radar-tracking-system/src/parser/runtime_pipeline.py#L310)
 
 ```python
 self.byte_buffer = bytearray(max_buffer_size)
@@ -257,10 +257,10 @@ self.byte_buffer_length = 0
 ```
 
 새 데이터가 들어오면 `_append()`로 뒤에 붙이고,  
-[src/parser/tlv_parse_runner.py:172](/d:/capstone_radar/ti_toolbox/radar-tracking-system/radar-tracking-system/src/parser/tlv_parse_runner.py#L172)
+[src/parser/runtime_pipeline.py:315](/d:/capstone_radar/ti_toolbox/radar-tracking-system/radar-tracking-system/src/parser/runtime_pipeline.py#L315)
 
 앞부분을 버릴 때는 `_shift_left()`로 왼쪽으로 민다.  
-[src/parser/tlv_parse_runner.py:187](/d:/capstone_radar/ti_toolbox/radar-tracking-system/radar-tracking-system/src/parser/tlv_parse_runner.py#L187)
+[src/parser/runtime_pipeline.py:330](/d:/capstone_radar/ti_toolbox/radar-tracking-system/radar-tracking-system/src/parser/runtime_pipeline.py#L330)
 
 즉 버퍼는 `쌓기 -> 찾기 -> 잘라내기 -> 남은 것 유지` 반복 구조다.
 
@@ -430,8 +430,8 @@ MMWaveSerialReader.read_frame
 ```
 
 ## 10.2 `MMWaveSerialReader.read_frame`
-이 함수는 실시간 처리의 중심이다.  
-[src/parser/tlv_parse_runner.py:196](/d:/capstone_radar/ti_toolbox/radar-tracking-system/radar-tracking-system/src/parser/tlv_parse_runner.py#L196)
+이 함수는 실시간 처리의 중심이고, 현재 구현 위치는 `runtime_pipeline.py`다.  
+[src/parser/runtime_pipeline.py:339](/d:/capstone_radar/ti_toolbox/radar-tracking-system/radar-tracking-system/src/parser/runtime_pipeline.py#L339)
 
 하는 일:
 
@@ -657,7 +657,7 @@ point가 2개면:
 
 ## 13.2 런타임 프레임 로그
 현재 실시간 실행 시 아래 형태 로그가 나온다.  
-[src/parser/tlv_parse_runner.py:400](/d:/capstone_radar/ti_toolbox/radar-tracking-system/radar-tracking-system/src/parser/tlv_parse_runner.py#L400)
+[src/parser/runtime_pipeline.py:555](/d:/capstone_radar/ti_toolbox/radar-tracking-system/radar-tracking-system/src/parser/runtime_pipeline.py#L555)
 
 ```text
 frame=123 packet=2848B raw=87 filtered=51 clusters=3 tracks=2 parser_ms=2.41 pipe_ms=7.88

@@ -1,30 +1,34 @@
 # Radar Tracking System
 
-실시간 TI mmWave(IWR6843) 포인트클라우드를 수집/전처리/클러스터링/트래킹하여 객체 단위 상태를 출력하는 파이프라인 프로젝트입니다.
+실시간 TI mmWave(IWR6843) 포인트클라우드를 수집하고, 필터링/DBSCAN/트래킹/제어 판단까지 연결해 객체 단위 상태를 출력하는 파이프라인 프로젝트입니다.
 
-## 1. 프로젝트 목표
-- UART TLV 스트림을 안정적으로 파싱
-- 노이즈 제거 후 객체 후보를 DBSCAN으로 군집화
-- Kalman 기반 다중 객체 트래킹 수행
-- 실시간 운영 지표(FPS, 프레임별 처리 상태) 출력
+핵심 흐름:
+`TLV Parse -> Preprocess -> DBSCAN -> Kalman Tracking -> Control / Runtime Metrics`
 
-핵심 파이프라인:
-`TLV Parse -> Preprocess -> DBSCAN -> Kalman Tracking -> Runtime Metrics`
+## 1. 현재 실행 구조
+- 기존 실행 명령은 그대로 `src/parser/tlv_parse_runner.py`를 사용한다.
+- 실제 런타임 구현은 `src/parser/runtime_pipeline.py`에 있다.
+- `src/parser/tlv_parse_runner.py`는 기존 명령과 import 호환을 위한 래퍼다.
+- 공용 기본 파라미터는 `config/runtime_params.json`에 있다.
+- 러너와 3D viewer는 둘 다 `--params-file`로 같은 기본값을 읽는다.
+- CLI 인자를 직접 주면 JSON 기본값보다 우선한다.
 
 ## 2. 디렉터리 구조
 ```text
 radar-tracking-system/
+├─ config/
+│  └─ runtime_params.json
 ├─ docs/
 │  ├─ architecture.md
-│  ├─ architecture_analysis_spec.md
 │  ├─ capstone_pipeline_spec.md
-│  ├─ FMEA.md
-│  └─ performance_log.md
+│  ├─ doxygen_overview.md
+│  └─ ...
 ├─ evidence/
 ├─ experiments/
 └─ src/
    ├─ parser/
    │  ├─ tlv_packet_parser.py
+   │  ├─ runtime_pipeline.py
    │  └─ tlv_parse_runner.py
    ├─ filter/
    │  └─ noise_filter.py
@@ -34,90 +38,167 @@ radar-tracking-system/
    │  ├─ kalman_tracker.py
    │  ├─ tracker_utils.c
    │  └─ tracker_utils.h
+   ├─ control/
+   │  └─ proximity_speed_control.py
    ├─ communication/
-   │  └─ stm32_uart_tx.c
-   ├─ filterpy-master/
-   └─ plot_dbscan.py
+   │  ├─ control_protocol.py
+   │  └─ stm32_control_rx_example.c
+   ├─ visualization/
+   │  └─ live_rail_viewer.py
+   ├─ runtime_params.py
+   └─ filterpy-master/
 ```
 
 ## 3. 요구사항
 - Python 3.10+
-- Windows (COM 포트 기준) 또는 Linux (tty 포트로 치환)
+- Windows(COM 포트 기준) 또는 Linux(tty 포트로 치환)
 - TI IWR6843 + 유효한 mmWave cfg 파일
 
-권장 환경 구성:
+권장 환경:
 ```bash
-conda create -n radar-track python=3.11 -y
-conda activate radar-track
+conda activate mmwave_env
 python -m pip install -r requirements.txt
 ```
 
-필수 패키지(`requirements.txt`):
+필수 패키지:
 ```bash
 pyserial==3.5
 numpy==1.26.4
 scikit-learn==1.5.2
 filterpy==1.4.5
+matplotlib==3.9.2
 ```
 
 참고:
 - `filterpy`는 pip 설치를 권장합니다.
 - 로컬 `src/filterpy-master`는 fallback 용도로만 사용합니다.
-- 현재 `requirements.txt`는 팀원이 다른 PC에서도 그대로 재현할 수 있는 최소 런타임 패키지만 남겨둔 상태입니다.
+- `matplotlib`는 `src/visualization/live_rail_viewer.py` 3D 디버그 뷰어에 필요합니다.
 
 ## 4. 빠른 시작
-프로젝트 루트(`radar-tracking-system/radar-tracking-system`)에서 실행:
+프로젝트 루트(`radar-tracking-system/radar-tracking-system`)에서 실행한다.
+
+### 4.1 기본 실행
+가장 먼저 정상 동작 여부를 확인할 때 쓰는 명령이다.
 
 ```bash
-python src/parser/tlv_parse_runner.py \
-  --cli-port COM6 \
-  --data-port COM5 \
-  --config config/profile_3d.cfg \
-  --snr-threshold 8 \
-  --dbscan-eps 0.6 \
-  --dbscan-min-samples 4 \
-  --association-gate 1.5 \
-  --max-misses 8 \
-  --min-hits 2 \
-  --duration 30 \
-  --scenario baseline \
-  --roi-tag full_frame
+python src/parser/tlv_parse_runner.py --cli-port COM11 --data-port COM10 --config config/profile_3d.cfg
 ```
+
+### 4.2 60초 baseline 측정
+summary CSV와 FPS 로그를 비교할 때 추천하는 명령이다.
+
+```bash
+python src/parser/tlv_parse_runner.py --cli-port COM11 --data-port COM10 --config config/profile_3d.cfg --duration 60 --scenario baseline --roi-tag full_frame
+```
+
+### 4.3 좌표 preview를 함께 보고 싶을 때
+filtered point, cluster, track 좌표 일부를 콘솔과 frame CSV에 같이 남긴다.
+
+```bash
+python src/parser/tlv_parse_runner.py --cli-port COM11 --data-port COM10 --config config/profile_3d.cfg --coord-preview-count 3 --coord-preview-every 10
+```
+
+의미:
+- `--coord-preview-count 3`: 첫 3개 좌표만 출력
+- `--coord-preview-every 10`: 10프레임마다 한 번만 출력
+
+### 4.4 파라미터를 한 곳에서 반복 튜닝할 때
+반복적으로 바꾸는 값은 `config/runtime_params.json`에서 관리하는 것이 가장 편하다.
+
+추천 흐름:
+- 기본값은 `config/runtime_params.json`을 그대로 사용
+- 러너와 viewer가 같은 파일을 함께 읽음
+- 특정 run에서만 바꾸고 싶으면 CLI 인자로 덮어씀
+
+예:
+```bash
+python src/parser/tlv_parse_runner.py --cli-port COM11 --data-port COM10 --config config/profile_3d.cfg --dbscan-eps 0.55 --association-gate 1.2
+```
+
+### 4.5 파서 debug를 보고 싶을 때
+header 값과 parser 내부 상태를 확인할 때 쓴다.
+
+```bash
+python src/parser/tlv_parse_runner.py --cli-port COM11 --data-port COM10 --config config/profile_3d.cfg --debug --duration 30
+```
+
+### 4.6 3D 시각화로 보고 싶을 때
+오른쪽 rail이 있는 3D 디버그 viewer를 실행한다.
+
+```bash
+python src/visualization/live_rail_viewer.py --cli-port COM11 --data-port COM10 --config config/profile_3d.cfg
+```
+
+문제가 생기면:
+- 예외가 `docs/error/YYYY-MM-DD.md`에 자동 기록된다.
+- direct script 실행과 module import 경로를 모두 고려한 fallback import가 들어 있다.
+- ghost track가 많이 남으면 `--report-miss-tolerance 0` 또는 `--max-misses 3` 쪽을 먼저 확인한다.
+
+### 4.7 실행 시 확인 포인트
+- 시작 직후 `[CFG] << Done` 응답이 정상적으로 이어지는지 확인
+- 프레임 로그가 `frame=... gap=... packet=... raw=... filtered=... clusters=... tracks=...` 형태로 이어지는지 확인
+- `send_config()` 이후 data port input buffer가 한 번 비워진 뒤 읽기가 시작되는지 확인
+- 가능하면 `Ctrl-C`보다 `--duration`으로 종료해 summary 비교가 쉬운 run을 남긴다
 
 예상 로그:
 ```text
-[CFG] >> sensorStop
+[CFG] >> sensorStart
 [CFG] << Done
-frame=123 packet=2848B raw=87 filtered=51 clusters=3 tracks=2 parser_ms=2.41 pipe_ms=7.88
+frame=123 gap=0 packet=2848B raw=87 filtered=51 clusters=3 tracks=2 parser_ms=2.41 pipe_ms=7.88
 [PERF] fps=14.8 window=1.01s
-[SUMMARY] frames=300 avg_fps=14.92 avg_packet=2860.4B avg_parser_ms=2.31 parse_failures=0 resyncs=1 dropped_est=0
 ```
 
 ## 5. 실행 인자
-`src/parser/tlv_parse_runner.py`
+기본 실행 커맨드는 `src/parser/tlv_parse_runner.py`이고, 실제 구현은 `src/parser/runtime_pipeline.py`에 있다.
 
-입출력:
-- `--cli-port`: 레이더 CLI 포트 (예: `COM6`)
-- `--data-port`: 레이더 Data 포트 (예: `COM5`)
+공용:
+- `--params-file`: 공용 JSON 파라미터 파일 경로, 기본값 `config/runtime_params.json`
+- `--cli-port`: 레이더 CLI 포트
+- `--data-port`: 레이더 Data 포트
 - `--config`: mmWave cfg 파일 경로
 - `--duration`: 실행 시간(초), 미지정 시 무한 실행
 - `--debug`: 파서 디버그 출력
+- `--coord-preview-count`
+- `--coord-preview-every`
 
 전처리:
-- `--snr-threshold`: 최소 SNR
-- `--max-noise`: 최대 noise
-- `--min-range`: 최소 거리
-- `--max-range`: 최대 거리
+- `--snr-threshold`
+- `--max-noise`
+- `--min-range`
+- `--max-range`, 현재 기본값 `3.0m`
+- `--filter-x-min`, `--filter-x-max`
+- `--filter-y-min`, `--filter-y-max`
+- `--filter-z-min`, 현재 기본값 `-0.6m`
+- `--filter-z-max`, 현재 기본값 `1.0m`
+- `--disable-near-front-keepout`
+- `--disable-right-rail-keepout`
+- `--disable-static-clutter-filter`
 
 클러스터링:
-- `--dbscan-eps`: DBSCAN `eps`
-- `--dbscan-min-samples`: DBSCAN `min_samples`
-- `--use-velocity-feature`: `(x, y, v)`로 클러스터링
+- `--dbscan-eps`
+- `--dbscan-min-samples`
+- `--use-velocity-feature`
+- `--dbscan-velocity-weight`: `(x, y, v)` 사용 시 속도 축 스케일
 
 트래커:
-- `--association-gate`: 트랙-측정 연계 거리 게이트(m)
-- `--max-misses`: 삭제 전 최대 연속 미검출
-- `--min-hits`: 출력 전 최소 hit 수
+- `--association-gate`
+- `--max-misses`
+- `--min-hits`
+- `--report-miss-tolerance`
+
+제어/STM32:
+- `--control-enabled`
+- `--control-zone-x-min`, `--control-zone-x-max`
+- `--control-zone-y-min`, `--control-zone-y-max`
+- `--control-zone-z-min`, `--control-zone-z-max`
+- `--control-slow-distance`
+- `--control-stop-distance`
+- `--control-resume-distance`
+- `--control-out-port`
+
+시각화:
+- `src/visualization/live_rail_viewer.py`도 `--params-file`을 지원한다.
+- viewer는 공용 filter/clustering 기본값과 함께 시야 범위(`x/y/z`) 및 `--max-vis-fps`를 읽는다.
 
 ## 6. 데이터 계약
 파서 출력(`ParsedFrame`):
@@ -126,56 +207,74 @@ frame=123 packet=2848B raw=87 filtered=51 clusters=3 tracks=2 parser_ms=2.41 pip
 - `points: {x[], y[], z[], v[], range[], snr[], noise[]}`
 
 클러스터 출력:
-- `x, y, z`: 중심점
+- `x, y, z`: centroid
 - `v`: 평균 속도
 - `size`: 포인트 수
-- `confidence`: 신뢰도(단순 점수)
+- `confidence`: `size + snr + spread` 기반 heuristic score
+- `spread_xy`, `mean_snr`, `centroid_method`
 
 트랙 출력:
 - `track_id`
 - `x, y, vx, vy`
 - `age, hits, misses, confidence`
 
-## 7. 성능 운영 기준(권장)
+제어 출력:
+- `command`
+- `speed_ratio`
+- `primary_event`
+- `track_id`
+- `zone_distance_m`, `closing_speed_mps`
+
+## 7. 성능 운영 기준
 - 평균 FPS: `>= 10`
 - P95 프레임 처리시간: `<= 100ms`
 - 장시간 안정성: 30분 이상 크래시/메모리 누수 없음
 
 측정 및 기록:
 - 런타임 FPS 로그: 표준 출력
+- 프레임 CSV/텍스트 로그: `evidence/runtime_logs/`
 - 실험 결과 기록: `docs/performance_log.md`
 
 ## 8. 트러블슈팅
 1. `ModuleNotFoundError: sklearn` 또는 `filterpy`
-- `pip install numpy scikit-learn filterpy` 재설치
+- `python -m pip install -r requirements.txt` 재설치
 
 2. 프레임이 안 올라옴
-- COM 포트 매핑 확인(장치 관리자)
+- COM 포트 매핑 확인
 - cfg 경로/권한 확인
-- Baudrate(115200/921600) 장비 설정과 일치 확인
-- 시작 직후 `[CFG] << Error ...`가 보이면 cfg/demo 조합이 맞는지 먼저 확인
+- baudrate(115200/921600) 장비 설정 일치 확인
+- 에러 발생 시 `docs/error/YYYY-MM-DD.md` 자동 기록 확인
 
-3. 트랙이 자주 끊김
+3. 튜닝 값을 자주 바꾸고 있는데 명령이 너무 길다
+- `config/runtime_params.json`에서 반복 파라미터를 먼저 수정
+- run별 실험만 CLI 인자로 덮어쓰기
+
+4. 트랙이 자주 끊김
 - `--association-gate` 증가
 - `--max-misses` 증가
-- `--dbscan-eps` / `--dbscan-min-samples` 재튜닝
+- `--dbscan-eps` / `--dbscan-min-samples` / `--dbscan-velocity-weight` 재튜닝
+
+5. ghost track가 너무 많이 남음
+- `--report-miss-tolerance 0` 유지
+- `--max-misses` 감소
+- `--snr-threshold` 증가
+- keepout/static clutter 기본값이 장면과 맞는지 확인
 
 ## 9. 개발 가이드
-- 새로운 기능은 파이프라인 계약을 깨지 않도록 모듈 단위로 추가
-- 실험 결과는 `docs/`와 `evidence/`에 함께 기록
-- 구조 변경 시 `docs/architecture.md`와 동기화
+- 반복 튜닝 값은 우선 `config/runtime_params.json`에 모은다.
+- 새 기능은 파이프라인 계약을 깨지 않도록 모듈 단위로 추가한다.
+- 구조 변경 시 `README.md`, `docs/architecture.md`, `docs/doxygen_overview.md`를 함께 갱신한다.
+- 과거 장애/수정 로그는 `docs/error/`, `docs/correction report/`에 날짜 기준으로 남긴다.
 
 ## 10. 관련 문서
 - 아키텍처: `docs/architecture.md`
-- 분석 명세: `docs/architecture_analysis_spec.md`
+- Doxygen 개요: `docs/doxygen_overview.md`
 - 캡스톤 구현 명세: `docs/capstone_pipeline_spec.md`
-- 팀 요구사항/3개월 로드맵: `docs/capstone_team_req_roadmap.md`
 - TLV 개발 가이드: `docs/TLV.md`
 - TLV 스터디 노트: `docs/study/study_TLV.md`
-- 개발 진척 보드: `docs/elevation/README.md`
-- DBSCAN 개발 가이드: `docs/DBSCAN.md`
-- Kalman 개발 가이드: `docs/Kalman.md`
+- 런타임/제어 스터디 노트: `docs/study/study_runtime_pipeline_and_control.md`
+- 런타임 이슈/튜닝 계획: `docs/elevation/runtime_issue_fix_plan.md`
+- 시각화 진척 보드: `docs/elevation/visualization.md`
 - 런타임 로깅/ROI 계획: `docs/runtime_logging_roi_plan.md`
+- 에러 로그: `docs/error/`
 - 수정 이력 리포트: `docs/correction report/`
-- 성능 로그: `docs/performance_log.md`
-- FMEA: `docs/FMEA.md`

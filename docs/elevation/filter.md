@@ -20,16 +20,18 @@
 ### 운영/로그
 - ~~raw point 수 / filtered point 수 콘솔 로그 반영~~
 - ~~run summary에 `avg_raw_points`, `avg_filtered_points` 기록~~
-- filter ratio(`filtered/raw`) 계산 및 기록
+- ~~filter ratio(`filtered/raw`) 계산 및 기록~~
+- ~~frame별 `snr` / `range` 통계 기록~~
+- ~~샘플 point의 `(x, y, z, snr, noise, v)` 기록~~
 - scenario별 filter 설정값 문서화
 - filter 전/후 시각화 자동 저장
 
 ### 품질 개선
-- static clutter 제거 전략 추가
+- ~~static clutter 제거 1차 규칙 추가~~
 - range-dependent threshold 설계
-- 작업영역 ROI preset 정의
-- conveyor zone 전용 ROI preset 정의
-- velocity 기반 pre-filter 검토
+- ~~작업영역 keepout preset 정의~~
+- ~~conveyor zone 전용 keepout preset 정의~~
+- ~~velocity 기반 pre-filter 1차 적용~~
 
 ### 테스트/재현성
 - 단일 객체 시나리오 filter 전/후 비교
@@ -53,7 +55,10 @@
 - static clutter map
 - adaptive threshold
 - filter ratio summary
+- keepout box 좌표 재튜닝
+- 과한 reject 여부 장면별 점검
 
 ## 업데이트 로그
 - 2026-03-14: 현재 `noise_filter.py` 기준 완료 항목 정리
 - 2026-03-14: ROI/실시간성 실험 관점 backlog 추가
+- 2026-03-17: near-front keepout, right-rail keepout, low-velocity static clutter reject, frame별 filter stats 로그 추가
