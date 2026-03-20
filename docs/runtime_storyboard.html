@@ -1,0 +1,448 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Runtime Storyboard</title>
+  <style>
+    :root{--bg:#f4f7fb;--panel:#fff;--line:#d8e3f0;--text:#132238;--muted:#5f6f82;--brand:#0f6cbd;--brand2:#2151a4;--code:#0f172a;--codeText:#dbeafe}
+    *{box-sizing:border-box} body{margin:0;font-family:"Segoe UI","Malgun Gothic",sans-serif;background:linear-gradient(180deg,#f9fbff 0%,var(--bg) 18%,var(--bg) 100%);color:var(--text);line-height:1.6}
+    a{color:var(--brand2);text-decoration:none} a:hover{text-decoration:underline}
+    .wrap{display:grid;grid-template-columns:280px minmax(0,1fr);gap:24px;width:min(1460px,calc(100vw - 40px));margin:0 auto;padding:24px 0 40px}
+    .side{position:sticky;top:18px;align-self:start;background:rgba(255,255,255,.92);border:1px solid var(--line);border-radius:20px;padding:18px;box-shadow:0 18px 40px rgba(22,50,90,.08)}
+    .side h1{margin:0 0 8px;font-size:25px;line-height:1.2}
+    .side p{margin:0 0 14px;color:var(--muted);font-size:14px}
+    .side nav,.quick{display:grid;gap:10px;margin-top:16px}
+    .side nav a,.quick a{display:block;padding:10px 12px;border-radius:12px;background:#f7faff;border:1px solid var(--line);font-weight:700}
+    .main{display:grid;gap:22px}
+    .hero{background:linear-gradient(135deg,#0f6cbd 0%,#2151a4 55%,#0c3b74 100%);color:#fff;border-radius:26px;padding:28px 30px;box-shadow:0 20px 44px rgba(18,56,108,.2)}
+    .eyebrow{font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:.08em;color:var(--muted)}
+    .hero .eyebrow{color:rgba(255,255,255,.75)}
+    .hero h2{margin:8px 0 10px;font-size:34px;line-height:1.2;letter-spacing:-.04em}
+    .hero p{margin:0;max-width:940px;color:rgba(255,255,255,.92)}
+    .section{background:rgba(255,255,255,.9);border:1px solid var(--line);border-radius:24px;padding:24px;box-shadow:0 16px 36px rgba(24,46,88,.07)}
+    .section h2{margin:0 0 8px;font-size:28px;letter-spacing:-.03em}
+    .lead{margin:0 0 18px;color:var(--muted);max-width:980px}
+    .grid4,.metrics,.implemented,.ideas,.solutions{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px}
+    .grid3,.reqs{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px}
+    .card,.metric,.req,.idea,.solution{background:var(--panel);border:1px solid var(--line);border-radius:18px;padding:18px;box-shadow:0 8px 22px rgba(20,36,60,.05)}
+    .metric .label,.moduleTag,.reqId{font-size:12px;text-transform:uppercase;font-weight:800;letter-spacing:.08em;color:var(--muted)}
+    .metric .value{margin-top:10px;font-size:28px;font-weight:800;letter-spacing:-.04em}
+    .metric .sub,.mini{margin-top:8px;font-size:13px;color:var(--muted)}
+    .goal{display:grid;grid-template-columns:1.15fr .85fr;gap:18px}
+    .goalList{display:grid;gap:12px}
+    .goalItem{display:flex;gap:12px;padding:14px;background:#f7faff;border:1px solid var(--line);border-radius:16px}
+    .badge{width:34px;height:34px;border-radius:999px;background:var(--brand);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:800;flex:0 0 auto}
+    .callout,.flowStage,.simPanel{background:linear-gradient(180deg,#f9fbff,#f1f7ff);border:1px solid var(--line);border-radius:20px;padding:18px}
+    .cmd{margin-top:12px;background:var(--code);color:var(--codeText);border-radius:14px;padding:14px;font-family:Consolas,"Courier New",monospace;font-size:13px;white-space:pre-wrap;overflow:auto}
+    .flow{display:grid;grid-template-columns:1.1fr .9fr;gap:18px}
+    .flowCards{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:10px;position:relative}
+    .flowCard{border:1px solid var(--line);background:rgba(255,255,255,.92);border-radius:16px;padding:12px 10px;cursor:pointer;text-align:left;min-height:126px;transition:.15s ease}
+    .flowCard.active{border-color:var(--brand);box-shadow:0 10px 24px rgba(15,108,189,.16);transform:translateY(-3px)}
+    .flowIndex{display:inline-flex;width:30px;height:30px;border-radius:999px;background:#e9f2ff;align-items:center;justify-content:center;font-weight:800;color:var(--brand2);margin-bottom:8px}
+    .flowLine{position:relative;height:58px;margin:8px 0 12px}.flowTrack{position:absolute;left:24px;right:24px;top:28px;height:4px;background:linear-gradient(90deg,#bfd6f3,#8cb4e8);border-radius:999px}.flowToken{position:absolute;left:24px;top:14px;width:30px;height:30px;border-radius:999px;background:radial-gradient(circle at 35% 35%,#e0f2ff,#0f6cbd 70%);box-shadow:0 0 0 8px rgba(15,108,189,.12);transition:left .45s ease,transform .45s ease}
+    .btns,.problemBtns,.links{display:flex;gap:10px;flex-wrap:wrap}
+    .btns button,.problemBtns button{border:1px solid var(--line);background:#fff;color:var(--brand2);padding:9px 14px;border-radius:999px;font-weight:700;cursor:pointer}
+    .problemBtns button.active{background:var(--brand2);color:#fff;border-color:var(--brand2)}
+    .module{background:var(--panel);border:1px solid var(--line);border-radius:18px;overflow:hidden}
+    .module summary{list-style:none;display:flex;justify-content:space-between;gap:16px;padding:18px;cursor:pointer;background:linear-gradient(180deg,#f8fbff,#f3f8ff)}
+    .module summary::-webkit-details-marker{display:none}
+    .moduleTitle{margin-top:6px;font-size:20px;font-weight:800;line-height:1.25}
+    .moduleRole{color:var(--brand2);font-weight:700;text-align:right;max-width:280px}
+    .moduleBody{padding:18px}
+    .moduleIO{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin-bottom:14px}
+    .chip{display:inline-flex;margin:4px 6px 0 0;padding:6px 10px;border-radius:999px;border:1px solid var(--line);font-size:12px;font-weight:700;background:#f8fbff}
+    .in{background:#eef8f1}.out{background:#fff4ea}.fn{background:#edf4ff}.var{background:#f9f0ff}
+    pre{margin:0;background:var(--code);color:var(--codeText);border-radius:16px;padding:16px;font-size:12px;line-height:1.5;overflow:auto;font-family:Consolas,"Courier New",monospace}
+    .problem,.param{display:grid;grid-template-columns:.95fr 1.05fr;gap:18px}
+    canvas{width:100%;max-width:100%;border-radius:16px;background:linear-gradient(180deg,#f9fbff,#f1f7ff);border:1px solid var(--line)}
+    .paramPanel{display:grid;gap:12px}
+    .slider{background:#fff;border:1px solid var(--line);border-radius:16px;padding:14px}
+    .sliderRow{display:grid;grid-template-columns:1fr auto;gap:8px;align-items:center;margin-bottom:8px;font-weight:700}
+    .slider input[type="range"]{width:100%}
+    .bars{display:grid;gap:10px;margin-top:14px}
+    .bar{background:#fff;border:1px solid var(--line);border-radius:14px;padding:10px 12px}
+    .track{height:10px;background:#eef2f8;border-radius:999px;overflow:hidden;margin-top:8px}
+    .fill{height:100%;width:0%;border-radius:999px;transition:.2s ease}
+    @media (max-width:1200px){.wrap,.goal,.flow,.problem,.param{grid-template-columns:1fr}.side{position:static}.grid4,.metrics,.implemented,.ideas,.solutions,.grid3,.reqs,.flowCards,.moduleIO{grid-template-columns:repeat(2,minmax(0,1fr))}}
+    @media (max-width:760px){.grid4,.metrics,.implemented,.ideas,.solutions,.grid3,.reqs,.flowCards,.moduleIO{grid-template-columns:1fr}.hero h2{font-size:28px}.section,.hero{padding:18px}}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <aside class="side">
+      <h1>Runtime Storyboard</h1>
+      <p>기존 HTML은 그대로 두고, 이 문서는 처음 보는 사람도 프로젝트를 한 번에 이해하도록 새로 만든 설명/시뮬레이션/코드 탐색 페이지다.</p>
+      <div class="mini">Current baseline: latest run `20260319_023912`, yaw 20deg, pitch 30deg, height 1.74m</div>
+      <nav>
+        <a href="#goal">최종 목표</a>
+        <a href="#flow">구동 방법 / 동적 시뮬레이션</a>
+        <a href="#handoff">코드별 정보 전달</a>
+        <a href="#implemented">현재 구현</a>
+        <a href="#req">앞으로 구현할 REQ</a>
+        <a href="#problems">현재 문제 / 시뮬레이션</a>
+        <a href="#solutions">해결 방향</a>
+        <a href="#ideas">논문화 아이디어</a>
+        <a href="#code">코드 탐색</a>
+      </nav>
+      <div class="quick">
+        <a href="./doxygen/html/runtime_portal.html">Doxygen Runtime Portal</a>
+        <a href="./runtime_code_browser.html">Full Code Browser</a>
+        <a href="./doxygen/html/index.html">Doxygen Home</a>
+      </div>
+    </aside>
+
+    <main class="main">
+      <section class="hero">
+        <div class="eyebrow">Capstone / Real-Time mmWave Tracking</div>
+        <h2>실시간 객체추적 시스템을 “설명 가능하고 시연 가능한 상태”까지 끌어올리는 프로젝트</h2>
+        <p>이 프로젝트의 최종 목표는 mmWave point cloud를 실시간으로 파싱하고, 전처리/클러스터링/트래킹/시각화/제어까지 이어지는 전체 파이프라인을 안정적으로 동작시키는 것이다. 단순히 점을 띄우는 수준이 아니라, 왜 이런 결과가 나오는지 코드와 로그로 설명할 수 있고, 이후엔 논문 주제로 확장할 수 있는 구조를 만드는 것이 목적이다.</p>
+        <div class="metrics" style="margin-top:18px">
+          <article class="metric"><div class="label">Latest Run</div><div class="value">20260319_023912</div><div class="sub">2026-03-19T02:39:12</div></article>
+          <article class="metric"><div class="label">Avg Tracks</div><div class="value">1.11</div><div class="sub">split ratio 32.1%</div></article>
+          <article class="metric"><div class="label">Zero-Track</div><div class="value">30.8%</div><div class="sub">183 / 595 frames</div></article>
+          <article class="metric"><div class="label">Parser Health</div><div class="value">resync 25</div><div class="sub">fail 3 / dropped 5</div></article>
+        </div>
+      </section>
+
+      <section class="section" id="goal">
+        <h2>1. 이 프로젝트의 최종목표 및 무엇을 하려는가</h2>
+        <p class="lead">현재 하는 일은 “센서가 보내는 point cloud를 사람이 이해할 수 있는 추적 결과로 바꾸는 것”이다. 그 과정에서 코드 구조, 실험 근거, 시연 안정성까지 같이 챙기는 것이 핵심이다.</p>
+        <div class="goal">
+          <div class="goalList">
+            <div class="goalItem"><div class="badge">1</div><div><strong>실시간으로 보이고 이해되어야 한다</strong><br/>사람이 가까워지고 멀어질 때 viewer가 직관적으로 따라와야 한다.</div></div>
+            <div class="goalItem"><div class="badge">2</div><div><strong>어떤 코드가 어떤 역할인지 설명 가능해야 한다</strong><br/>파일별 입력/출력/핵심 함수와 데이터 handoff가 명확해야 한다.</div></div>
+            <div class="goalItem"><div class="badge">3</div><div><strong>시연과 연구 확장 둘 다 가능해야 한다</strong><br/>캡스톤 데모에는 안정적으로, 이후엔 calibration / filtering / merge / observability 연구로 확장 가능해야 한다.</div></div>
+          </div>
+          <div class="callout">
+            <div class="eyebrow">Current Install / Tuning</div>
+            <p><strong>Sensor pose:</strong> yaw 20deg, pitch 30deg, height 1.74m</p>
+            <p><strong>Current tuning:</strong> max_range 3.0m, dbscan_min_samples 3, max_vis_fps 10</p>
+            <p><strong>Current pain points:</strong> diagonal drift, split tracks, zero-track gaps, viewer delay pressure</p>
+            <div class="cmd">Viewer demo
+python src/visualization/live_rail_viewer.py --cli-port COM11 --data-port COM10 --config config/profile_3d.cfg --max-vis-fps 5
+
+Runner measurement
+python src/parser/tlv_parse_runner.py --cli-port COM11 --data-port COM10 --config config/profile_3d.cfg --duration 60</div>
+          </div>
+        </div>
+      </section>
+
+      <section class="section" id="flow">
+        <h2>2. 구동 방법은 어떻게 되는가: 동적 시뮬레이션으로 보는 작동 방식</h2>
+        <p class="lead">아래 애니메이션은 실제 구조를 단순화해 보여준다. 파란 토큰이 센서에서 시작해 TLV parse, world transform, filter, DBSCAN, tracker를 지나 viewer / report / control로 가는 과정을 따라간다.</p>
+        <div class="flow">
+          <div class="flowStage">
+            <div class="flowLine"><div class="flowTrack"></div><div class="flowToken" id="flowToken"></div></div>
+            <div class="flowCards">
+              <button type="button" class="flowCard" data-step="0"><span class="flowIndex">1</span><strong>Sensor / cfg</strong><br/><span class="mini">CFAR / beamforming</span></button>
+              <button type="button" class="flowCard" data-step="1"><span class="flowIndex">2</span><strong>TLV parse</strong><br/><span class="mini">ParsedFrame</span></button>
+              <button type="button" class="flowCard" data-step="2"><span class="flowIndex">3</span><strong>World transform</strong><br/><span class="mini">yaw / pitch / height</span></button>
+              <button type="button" class="flowCard" data-step="3"><span class="flowIndex">4</span><strong>Preprocess</strong><br/><span class="mini">range / ROI / keepout</span></button>
+              <button type="button" class="flowCard" data-step="4"><span class="flowIndex">5</span><strong>DBSCAN</strong><br/><span class="mini">cluster generation</span></button>
+              <button type="button" class="flowCard" data-step="5"><span class="flowIndex">6</span><strong>Tracker</strong><br/><span class="mini">continuity / vx / vy</span></button>
+              <button type="button" class="flowCard" data-step="6"><span class="flowIndex">7</span><strong>Output</strong><br/><span class="mini">viewer / reports / control</span></button>
+            </div>
+            <div class="btns">
+              <button type="button" id="flowPlay">Play</button>
+              <button type="button" id="flowNext">Next Step</button>
+            </div>
+          </div>
+          <div class="simPanel">
+            <div class="eyebrow">Current Step</div>
+            <h3 id="flowTitle" style="margin:6px 0 8px">-</h3>
+            <p id="flowDesc">-</p>
+            <div class="eyebrow" style="margin-top:14px">Data Handoff</div>
+            <ul id="flowHandoff" style="padding-left:18px;margin:12px 0 0"></ul>
+          </div>
+        </div>
+      </section>
+
+      <section class="section" id="handoff">
+        <h2>3. 각 코드에서 어떤 정보가 넘어가고 최종적으로 어떤 정보가 출력되는가</h2>
+        <p class="lead">이 섹션은 “어느 파일이 무엇을 받아 무엇을 내보내는지”를 코드 기준으로 정리한 것이다. 펼쳐서 읽고, 필요하면 Doxygen source/API나 전체 코드 브라우저로 바로 이동하면 된다.</p>
+        <div class="grid3">
+          <details class="module"><summary><div><div class="moduleTag">Sensor</div><div class="moduleTitle">config/profile_3d.cfg</div></div><div class="moduleRole">센서 DSP 설정</div></summary><div class="moduleBody"><p>CFAR, beamforming, AoA FOV, frame timing을 센서 단에서 결정한다. Python은 이 결과 TLV를 받는다.</p><div class="moduleIO"><div><h4>Input</h4><span class="chip in">user cfg commands</span><span class="chip in">TI demo firmware</span></div><div><h4>Output</h4><span class="chip out">TLV stream</span><span class="chip out">SNR/noise</span></div><div><h4>Functions</h4><span class="chip fn">cfarCfg</span><span class="chip fn">multiObjBeamForming</span><span class="chip fn">aoaFovCfg</span></div><div><h4>Variables</h4><span class="chip var">threshold</span><span class="chip var">FOV</span><span class="chip var">frame period</span></div></div><div class="links"><a href="../config/profile_3d.cfg">Open Config</a><a href="./runtime_code_browser.html">Full Browser</a></div><pre>49: cfarCfg -1 0 2 8 4 3 0 15 1
+50: cfarCfg -1 1 0 4 2 3 1 15 1
+51: multiObjBeamForming -1 1 0.5
+58: aoaFovCfg -1 -90 90 -90 90</pre></div></details>
+          <details class="module"><summary><div><div class="moduleTag">Runtime</div><div class="moduleTitle">src/parser/runtime_pipeline.py</div></div><div class="moduleRole">오케스트레이션 중심</div></summary><div class="moduleBody"><p>serial read, TLV parse, world transform, preprocessing, clustering, tracking, logging, reporting을 실제로 묶는 핵심 엔트리다.</p><div class="moduleIO"><div><h4>Input</h4><span class="chip in">UART bytes</span><span class="chip in">runtime params</span><span class="chip in">cfg path</span></div><div><h4>Output</h4><span class="chip out">ParsedFrame</span><span class="chip out">tracks</span><span class="chip out">reports</span></div><div><h4>Functions</h4><span class="chip fn">read_frame</span><span class="chip fn">transform_points_to_world</span><span class="chip fn">process_runtime_frame</span><span class="chip fn">run_realtime</span></div><div><h4>Variables</h4><span class="chip var">sensor_yaw_deg</span><span class="chip var">sensor_pitch_deg</span><span class="chip var">disable_text_log</span></div></div><div class="links"><a href="./doxygen/html/runtime__pipeline_8py.html">Doxygen API</a><a href="./doxygen/html/runtime__pipeline_8py_source.html">Doxygen Source</a><a href="./runtime_code_browser.html">Full Browser</a></div><pre>transform_points_to_world(points, yaw_deg, pitch_deg, sensor_height_m)
+process_runtime_frame(...)
+run_realtime(...)
+# TLV parse -> world transform -> filter -> cluster -> tracker</pre></div></details>
+          <details class="module"><summary><div><div class="moduleTag">Filter</div><div class="moduleTitle">src/filter/noise_filter.py</div></div><div class="moduleRole">점군 정리</div></summary><div class="moduleBody"><p>SNR, noise, range, axis ROI, keepout, static clutter 기준으로 raw point를 걸러내고 FilterStats를 만든다.</p><div class="moduleIO"><div><h4>Input</h4><span class="chip in">raw points</span><span class="chip in">ROI params</span></div><div><h4>Output</h4><span class="chip out">filtered points</span><span class="chip out">FilterStats</span></div><div><h4>Functions</h4><span class="chip fn">preprocess_points</span><span class="chip fn">points_dict_to_list</span></div><div><h4>Variables</h4><span class="chip var">snr_threshold</span><span class="chip var">max_range</span><span class="chip var">filter_x/y/z</span></div></div><div class="links"><a href="./doxygen/html/noise__filter_8py.html">Doxygen API</a><a href="./doxygen/html/noise__filter_8py_source.html">Doxygen Source</a></div><pre>preprocess_points(raw_points,
+  snr_threshold,
+  max_range,
+  exclusion_boxes,
+  static_clutter_boxes,
+  return_stats=True)</pre></div></details>
+          <details class="module"><summary><div><div class="moduleTag">Cluster</div><div class="moduleTitle">src/cluster/dbscan_cluster.py</div></div><div class="moduleRole">point -> cluster</div></summary><div class="moduleBody"><p>DBSCAN과 adaptive eps band를 사용해 filtered point를 cluster centroid로 묶는다.</p><div class="moduleIO"><div><h4>Input</h4><span class="chip in">filtered points</span><span class="chip in">dbscan params</span></div><div><h4>Output</h4><span class="chip out">clusters</span><span class="chip out">confidence</span></div><div><h4>Functions</h4><span class="chip fn">cluster_points</span><span class="chip fn">normalize_adaptive_eps_bands</span></div><div><h4>Variables</h4><span class="chip var">dbscan_eps</span><span class="chip var">dbscan_min_samples</span><span class="chip var">dbscan_velocity_weight</span></div></div><div class="links"><a href="./doxygen/html/dbscan__cluster_8py.html">Doxygen API</a><a href="./doxygen/html/dbscan__cluster_8py_source.html">Doxygen Source</a></div><pre>cluster_points(filtered_points,
+  eps=dbscan_eps,
+  min_samples=dbscan_min_samples,
+  adaptive_eps_bands=...)</pre></div></details>
+          <details class="module"><summary><div><div class="moduleTag">Tracking</div><div class="moduleTitle">src/tracking/kalman_tracker.py</div></div><div class="moduleRole">cluster -> track</div></summary><div class="moduleBody"><p>cluster sequence를 greedy nearest-first association 기반 Kalman tracker로 이어서 continuity를 만든다.</p><div class="moduleIO"><div><h4>Input</h4><span class="chip in">clusters</span><span class="chip in">frame ts</span></div><div><h4>Output</h4><span class="chip out">track list</span><span class="chip out">vx/vy</span></div><div><h4>Functions</h4><span class="chip fn">MultiObjectKalmanTracker.update</span></div><div><h4>Variables</h4><span class="chip var">association_gate</span><span class="chip var">max_misses</span><span class="chip var">report_miss_tolerance</span></div></div><div class="links"><a href="./doxygen/html/kalman__tracker_8py.html">Doxygen API</a><a href="./doxygen/html/kalman__tracker_8py_source.html">Doxygen Source</a></div><pre>tracks = tracker.update(clusters, frame_ts=now)
+# continuity / vx / vy / miss handling</pre></div></details>
+          <details class="module"><summary><div><div class="moduleTag">Viewer</div><div class="moduleTitle">src/visualization/live_rail_viewer.py</div></div><div class="moduleRole">실시간 시각화</div></summary><div class="moduleBody"><p>runtime 결과를 worker thread로 받아 최신 snapshot만 렌더링하며, motion cloud / trail / top-down view를 보여준다.</p><div class="moduleIO"><div><h4>Input</h4><span class="chip in">RuntimeFrameHookPayload</span><span class="chip in">viewer params</span></div><div><h4>Output</h4><span class="chip out">3D/top-down render</span><span class="chip out">status overlay</span></div><div><h4>Functions</h4><span class="chip fn">run_viewer</span><span class="chip fn">LatestRuntimeFrameBuffer</span><span class="chip fn">_draw_snapshot</span></div><div><h4>Variables</h4><span class="chip var">max_vis_fps</span><span class="chip var">point_persistence_frames</span><span class="chip var">track_history_sec</span></div></div><div class="links"><a href="./doxygen/html/live__rail__viewer_8py.html">Doxygen API</a><a href="./doxygen/html/live__rail__viewer_8py_source.html">Doxygen Source</a></div><pre>run_viewer(...)
+# worker thread -> latest snapshot buffer -> draw only latest state</pre></div></details>
+          <details class="module"><summary><div><div class="moduleTag">Reporting</div><div class="moduleTitle">src/reporting/runtime_experiment_report.py</div></div><div class="moduleRole">실험 기록 자동화</div></summary><div class="moduleBody"><p>run 종료 후 frame CSV와 summary를 바탕으로 experiment report, performance log, HTML portal 생성에 필요한 데이터를 만든다.</p><div class="moduleIO"><div><h4>Input</h4><span class="chip in">run_summary.csv</span><span class="chip in">frame csv</span></div><div><h4>Output</h4><span class="chip out">experiment report</span><span class="chip out">performance log</span></div><div><h4>Functions</h4><span class="chip fn">analyze_frame_csv</span><span class="chip fn">render_runtime_experiment_report</span></div><div><h4>Variables</h4><span class="chip var">zero_track_frames</span><span class="chip var">tracks_ge_2_frames</span><span class="chip var">longest_zero_track_streak</span></div></div><div class="links"><a href="./doxygen/html/runtime__experiment__report_8py.html">Doxygen API</a><a href="./doxygen/html/runtime__experiment__report_8py_source.html">Doxygen Source</a></div><pre>analyze_frame_csv(frame_csv)
+# zero-track / split-track / longest streak metrics</pre></div></details>
+        </div>
+      </section>
+
+      <section class="section" id="implemented">
+        <h2>4. 현재 구현된 것</h2>
+        <p class="lead">이미 구현되어 있고 지금 프로젝트의 강점으로 말할 수 있는 항목들이다.</p>
+        <div class="implemented">
+          <article class="card"><h3>실시간 런타임 파이프라인</h3><p>TLV parse -> world transform -> filter -> DBSCAN -> tracker -> viewer/report/control 흐름이 하나의 runtime 경로로 통합되어 있다.</p></article>
+          <article class="card"><h3>설치 보정</h3><p>sensor_yaw_deg, sensor_pitch_deg, sensor_height_m 기준으로 sensor frame을 world frame으로 보정한다.</p></article>
+          <article class="card"><h3>시각화 구조 개선</h3><p>viewer는 read/process와 draw를 분리해 최신 snapshot만 그리도록 구성되어 있다.</p></article>
+          <article class="card"><h3>로그/리포트 자동화</h3><p>run 종료 시 frame CSV, overview PNG, experiment report, performance_log, Doxygen portal이 자동 갱신된다.</p></article>
+        </div>
+      </section>
+
+      <section class="section" id="req">
+        <h2>5. 앞으로 구현해야 할 것 REQ</h2>
+        <p class="lead">지금부터는 있으면 좋은 기능이 아니라, 시연 안정성과 연구 확장을 위해 실제로 필요한 요구사항으로 정리했다.</p>
+        <div class="reqs">
+          <article class="req"><div class="reqId">REQ-1</div><h3>사람 1명 = track 1개에 가깝게</h3><p>split track merge, ground-range gate, association 개선으로 single-person continuity를 높여야 한다.</p></article>
+          <article class="req"><div class="reqId">REQ-2</div><h3>대각선 오인식 제거</h3><p>pose calibration wizard 또는 로그 기반 yaw/pitch 추천 도구가 필요하다.</p></article>
+          <article class="req"><div class="reqId">REQ-3</div><h3>시연 모드 안정화</h3><p>viewer FPS pressure를 더 줄이고 replay/demo mode를 제공해야 한다.</p></article>
+          <article class="req"><div class="reqId">REQ-4</div><h3>parser 관측성 향상</h3><p>resync 원인 분류, invalid packet 상세 카운터, UART 상태 요약이 더 필요하다.</p></article>
+          <article class="req"><div class="reqId">REQ-5</div><h3>평가 자동화</h3><p>front/back, lateral walk, idle scene을 preset 실험으로 자동 돌리고 비교할 수 있어야 한다.</p></article>
+          <article class="req"><div class="reqId">REQ-6</div><h3>control end-to-end 검증</h3><p>실제 belt output까지 포함한 latency / safety 검증이 남아 있다.</p></article>
+        </div>
+      </section>
+
+      <section class="section" id="problems">
+        <h2>6. 현재 문제가 무엇인가: 동적 시뮬레이션으로 보는 현재 상태</h2>
+        <p class="lead">아래 캔버스는 현재 시스템이 겪는 문제를 시각적으로 재현한다. Ideal은 우리가 원하는 상태이고, Current는 diagonal drift, split track, zero-track gap, delay pressure를 합친 모습이다.</p>
+        <div class="metrics" style="margin-bottom:18px">
+          <article class="metric"><div class="label">Diagonal Condition</div><div class="value">20 / 30</div><div class="sub">yaw / pitch install values</div></article>
+          <article class="metric"><div class="label">Split Ratio</div><div class="value">32.1%</div><div class="sub">tracks&gt;=2 frames</div></article>
+          <article class="metric"><div class="label">Zero-Track</div><div class="value">30.8%</div><div class="sub">longest streak 42 frames</div></article>
+          <article class="metric"><div class="label">Delay Pressure</div><div class="value">10.68 ms</div><div class="sub">avg pipeline latency</div></article>
+        </div>
+        <div class="problem">
+          <div class="simPanel">
+            <div class="problemBtns">
+              <button type="button" class="problemBtn active" data-mode="current">Current</button>
+              <button type="button" class="problemBtn" data-mode="ideal">Ideal</button>
+              <button type="button" class="problemBtn" data-mode="diagonal">Diagonal</button>
+              <button type="button" class="problemBtn" data-mode="split">Split</button>
+              <button type="button" class="problemBtn" data-mode="dropout">Zero-Track</button>
+              <button type="button" class="problemBtn" data-mode="delay">Delay</button>
+            </div>
+            <canvas id="problemCanvas" width="620" height="300"></canvas>
+          </div>
+          <div class="simPanel">
+            <div class="eyebrow">Problem Narrative</div>
+            <h3 id="problemTitle" style="margin:6px 0 8px">Current combined behavior</h3>
+            <p id="problemBody">최신 run 기준으로 diagonal drift, split track, zero-track gap, draw pressure가 같이 섞여 보이는 상태다.</p>
+            <div class="eyebrow" style="margin-top:16px">Latest Run Evidence</div>
+            <ul style="padding-left:18px;margin:12px 0 0">
+              <li>Latest run: <strong>20260319_023912</strong></li>
+              <li>Zero-track ratio: <strong>30.8%</strong></li>
+              <li>Split ratio (tracks&gt;=2): <strong>32.1%</strong></li>
+              <li>Removed range: <strong>6.82</strong> avg / frame</li>
+              <li>Pipeline latency: <strong>10.68 ms</strong> avg</li>
+            </ul>
+          </div>
+        </div>
+      </section>
+
+      <section class="section" id="solutions">
+        <h2>7. 어떻게 해결할 수 있을지</h2>
+        <p class="lead">문제를 한 번에 다 고치기보다, 원인에 맞는 파일과 파라미터부터 건드리는 순서가 중요하다.</p>
+        <div class="solutions">
+          <article class="solution"><h3>대각선 이동처럼 보임</h3><p>world-coordinate 보정 이후에도 걷기 축이 틀어지면 calibration UI 또는 로그 기반 yaw/pitch 추천 도구를 추가한다.</p><div class="mini">Best touch points: runtime_pipeline.py / runtime_params.json</div></article>
+          <article class="solution"><h3>한 사람을 여러 track으로 봄</h3><p>adaptive eps + post-merge + primary/secondary 표시 전략으로 split ratio를 낮춘다.</p><div class="mini">Best touch points: dbscan_cluster.py / kalman_tracker.py</div></article>
+          <article class="solution"><h3>zero-track 긴 구간</h3><p>ground-range 기반 gate, report_miss_tolerance 조정, far-field filtering 재설계가 필요하다.</p><div class="mini">Best touch points: noise_filter.py / kalman_tracker.py</div></article>
+          <article class="solution"><h3>시연 딜레이</h3><p>draw pressure를 더 낮추고 latest-only queue 정책을 유지하며 replay mode를 별도 제공한다.</p><div class="mini">Best touch points: live_rail_viewer.py</div></article>
+        </div>
+      </section>
+
+      <section class="section">
+        <h2>8. 파라미터 값이 달라지면 결과값이 어떻게 달라지는가: 연계성 시뮬레이터</h2>
+        <p class="lead">아래 시뮬레이터는 실제 시스템을 단순화한 직관용 도구다. 슬라이더를 바꾸면 drift / disappearance / split / draw pressure가 바로 바뀐다.</p>
+        <div class="param">
+          <div class="paramPanel">
+            <div class="slider"><div class="sliderRow"><label for="simYaw">yaw error (deg)</label><span id="simYawValue">20</span></div><input id="simYaw" type="range" min="-45" max="45" step="1" value="20" /></div>
+            <div class="slider"><div class="sliderRow"><label for="simPitch">pitch error (deg)</label><span id="simPitchValue">30</span></div><input id="simPitch" type="range" min="0" max="45" step="1" value="30" /></div>
+            <div class="slider"><div class="sliderRow"><label for="simRange">max_range (m)</label><span id="simRangeValue">3.0</span></div><input id="simRange" type="range" min="1.0" max="8.0" step="0.1" value="3.0" /></div>
+            <div class="slider"><div class="sliderRow"><label for="simDbscan">dbscan_min_samples</label><span id="simDbscanValue">3</span></div><input id="simDbscan" type="range" min="2" max="6" step="1" value="3" /></div>
+            <div class="slider"><div class="sliderRow"><label for="simFps">max_vis_fps</label><span id="simFpsValue">10</span></div><input id="simFps" type="range" min="3" max="15" step="1" value="10" /></div>
+          </div>
+          <div class="simPanel">
+            <canvas id="paramCanvas" width="620" height="300"></canvas>
+            <div class="bars">
+              <div class="bar"><strong>Drift risk</strong><div class="track"><div id="barDrift" class="fill"></div></div></div>
+              <div class="bar"><strong>Disappearance risk</strong><div class="track"><div id="barDisappear" class="fill"></div></div></div>
+              <div class="bar"><strong>Split-track risk</strong><div class="track"><div id="barSplit" class="fill"></div></div></div>
+              <div class="bar"><strong>Draw pressure</strong><div class="track"><div id="barDelay" class="fill"></div></div></div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="section" id="ideas">
+        <h2>9. 논문으로 발전시킬 수 있는 아이디어</h2>
+        <p class="lead">지금 구조는 단순 캡스톤 결과물로 끝내기보다, calibration / filtering / split reduction / runtime observability 쪽으로 연구 확장이 가능하다.</p>
+        <div class="ideas">
+          <article class="idea"><h3>자가 보정 기반 설치 캘리브레이션</h3><p>사람의 반복 보행 궤적만으로 yaw/pitch/height 오차를 추정하는 방법을 연구 주제로 확장할 수 있다.</p></article>
+          <article class="idea"><h3>world-coordinate aware filtering</h3><p>sensor range가 아니라 ground-range, corridor distance, belt axis distance 기준 filtering을 정리할 수 있다.</p></article>
+          <article class="idea"><h3>split-track reduction for sparse mmWave</h3><p>temporal merge + velocity consistency로 사람 1명의 분할을 줄이는 방법을 논문화할 수 있다.</p></article>
+          <article class="idea"><h3>runtime observability framework</h3><p>로그/리포트/HTML portal 자동화를 실시간 mmWave 시스템의 observability framework로 정리할 수 있다.</p></article>
+        </div>
+      </section>
+
+      <section class="section" id="code">
+        <h2>10. 처음 보는 사람도 코드까지 바로 따라가려면</h2>
+        <p class="lead">이 페이지는 설명용이다. 실제 코드는 아래 링크로 바로 들어가면 된다. Doxygen source는 함수/네임스페이스 기준으로 보기 좋고, runtime_code_browser는 전체 파일을 통째로 읽기 좋다.</p>
+        <div class="quick" style="grid-template-columns:repeat(3,minmax(0,1fr))">
+          <a href="./doxygen/html/runtime__pipeline_8py_source.html">runtime_pipeline source</a>
+          <a href="./doxygen/html/live__rail__viewer_8py_source.html">live_rail_viewer source</a>
+          <a href="./doxygen/html/noise__filter_8py_source.html">noise_filter source</a>
+          <a href="./doxygen/html/dbscan__cluster_8py_source.html">dbscan_cluster source</a>
+          <a href="./runtime_code_browser.html">Full Code Browser</a>
+          <a href="./doxygen/html/runtime_portal.html">Doxygen Runtime Portal</a>
+        </div>
+      </section>
+    </main>
+  </div>
+  <script>
+    const FLOW = [
+      { title: "1. Sensor / cfg", desc: "센서 DSP가 CFAR/beamforming/AoA 결과를 point TLV로 만든다.", handoff: ["cfg commands", "detected point TLV", "frame periodicity"] },
+      { title: "2. TLV parse", desc: "MMWaveSerialReader가 magic word를 찾고 ParsedFrame으로 복원한다.", handoff: ["x/y/z/v arrays", "snr/noise arrays", "frame_number / num_obj"] },
+      { title: "3. World transform", desc: "yaw / pitch / height 기준으로 sensor frame을 world frame으로 바꾼다.", handoff: ["world x/y/z", "pose-corrected path", "top-down coordinates"] },
+      { title: "4. Preprocess", desc: "range / ROI / keepout / static clutter 필터를 적용하고 제거 이유를 집계한다.", handoff: ["filtered points", "FilterStats", "removed_range / removed_roi"] },
+      { title: "5. DBSCAN", desc: "가까운 점들을 cluster로 묶고 centroid, confidence를 계산한다.", handoff: ["clusters", "cluster size", "cluster confidence"] },
+      { title: "6. Tracker", desc: "cluster sequence를 track으로 연결해 continuity와 속도를 만든다.", handoff: ["track id", "vx / vy", "track continuity"] },
+      { title: "7. Output", desc: "viewer가 화면을 그리고, report가 기록되고, control이 belt 명령으로 이어진다.", handoff: ["screen render", "CSV / md / html", "control packet"] },
+    ];
+    const flowToken = document.getElementById("flowToken");
+    const flowCards = Array.from(document.querySelectorAll(".flowCard"));
+    const flowTitle = document.getElementById("flowTitle");
+    const flowDesc = document.getElementById("flowDesc");
+    const flowHandoff = document.getElementById("flowHandoff");
+    let flowIndex = 0;
+    let flowTimer = null;
+    function renderFlow(index) {
+      flowIndex = ((index % FLOW.length) + FLOW.length) % FLOW.length;
+      const step = FLOW[flowIndex];
+      flowCards.forEach((card, idx) => card.classList.toggle("active", idx === flowIndex));
+      flowTitle.textContent = step.title;
+      flowDesc.textContent = step.desc;
+      flowHandoff.innerHTML = step.handoff.map((x) => `<li>${x}</li>`).join("");
+      flowToken.style.left = `${24 + flowIndex * 96}px`;
+      flowToken.style.transform = flowIndex === FLOW.length - 1 ? "scale(1.08)" : "scale(1)";
+    }
+    function toggleFlow() {
+      const btn = document.getElementById("flowPlay");
+      if (flowTimer) {
+        clearInterval(flowTimer);
+        flowTimer = null;
+        btn.textContent = "Play";
+        return;
+      }
+      flowTimer = setInterval(() => renderFlow(flowIndex + 1), 1600);
+      btn.textContent = "Pause";
+    }
+    document.getElementById("flowPlay").addEventListener("click", toggleFlow);
+    document.getElementById("flowNext").addEventListener("click", () => renderFlow(flowIndex + 1));
+    flowCards.forEach((card) => card.addEventListener("click", () => renderFlow(Number(card.dataset.step || 0))));
+    renderFlow(0);
+
+    const problemText = {
+      current: "최신 run 기준으로 diagonal drift, split track, zero-track gap, draw pressure가 같이 섞여 보이는 상태다.",
+      ideal: "사람의 실제 앞뒤 이동이 화면에서도 거의 수직 경로로 보이고, 1명은 1개 track로 유지되며, 중간 공백과 체감 지연이 거의 없는 상태다.",
+      diagonal: "설치 pose 또는 world transform이 충분히 맞지 않으면 사용자가 앞뒤로만 걸어도 화면에서는 x/y가 함께 변하는 대각선 경로로 보인다.",
+      split: "사람 몸의 반사점이 여러 cluster로 갈라지면 한 사람을 여러 track으로 봐서 좌우로 벌어진 점들처럼 보인다.",
+      dropout: "range/ROI/filter 조건 또는 far-field continuity가 약하면 특정 구간에서 track이 아예 사라지고 다시 나타난다.",
+      delay: "read/process보다 draw가 느리면 실제 사람 위치보다 화면 표시가 뒤늦게 따라오며, trail이 밀리는 것처럼 보인다.",
+    };
+    const problemTitle = document.getElementById("problemTitle");
+    const problemBody = document.getElementById("problemBody");
+    const problemButtons = Array.from(document.querySelectorAll(".problemBtn"));
+    const problemCanvas = document.getElementById("problemCanvas");
+    const pctx = problemCanvas.getContext("2d");
+    let problemMode = "current";
+    let pt = 0;
+    function drawLine(ctx, pts, color, width, dashed = false) {
+      ctx.save(); ctx.strokeStyle = color; ctx.lineWidth = width; if (dashed) ctx.setLineDash([8, 8]);
+      ctx.beginPath();
+      pts.forEach((p, idx) => { if (!p) return; if (idx === 0 || !pts[idx - 1]) ctx.moveTo(p.x, p.y); else ctx.lineTo(p.x, p.y); });
+      ctx.stroke(); ctx.restore();
+    }
+    function renderProblemScene() {
+      const w = problemCanvas.width, h = problemCanvas.height;
+      pctx.clearRect(0, 0, w, h); pctx.fillStyle = "#f8fbff"; pctx.fillRect(0, 0, w, h); pctx.strokeStyle = "#d8e3f0";
+      for (let i = 0; i < 6; i += 1) { const y = 26 + i * 42; pctx.beginPath(); pctx.moveTo(34, y); pctx.lineTo(w - 34, y); pctx.stroke(); }
+      const actual = [], shown = [], split = [];
+      for (let i = 0; i < 48; i += 1) {
+        const t = i / 47; const y = 248 - Math.sin(t * Math.PI) * 180; const baseX = 160; actual.push({ x: baseX, y });
+        let sx = baseX, sy = y, visible = true;
+        if (problemMode === "diagonal" || problemMode === "current") sx += (t - 0.5) * 86 + Math.sin(t * Math.PI * 2) * 8;
+        if (problemMode === "delay" || problemMode === "current") sy += 16;
+        if (problemMode === "dropout" || problemMode === "current") if ((t > 0.34 && t < 0.46) || (problemMode === "current" && t > 0.64 && t < 0.74)) visible = false;
+        shown.push(visible ? { x: sx + 220, y: sy } : null);
+        split.push(problemMode === "split" || problemMode === "current" ? [{ x: sx + 196, y: sy + 6 }, { x: sx + 220, y: sy - 6 }, { x: sx + 244, y: sy + 4 }] : null);
+      }
+      drawLine(pctx, actual, "#94a3b8", 3);
+      drawLine(pctx, shown, "#0f6cbd", 4, problemMode === "dropout");
+      const actualNow = actual[Math.floor(pt * (actual.length - 1))];
+      pctx.fillStyle = "#111827"; pctx.beginPath(); pctx.arc(actualNow.x, actualNow.y, 8, 0, Math.PI * 2); pctx.fill();
+      const shownNow = shown[Math.floor(pt * (shown.length - 1))];
+      if (shownNow) { pctx.fillStyle = "#0f6cbd"; pctx.beginPath(); pctx.arc(shownNow.x, shownNow.y, 9, 0, Math.PI * 2); pctx.fill(); }
+      const splitNow = split[Math.floor(pt * (split.length - 1))];
+      if (splitNow) { ["#16a34a", "#f97316", "#7c3aed"].forEach((color, idx) => { const p = splitNow[idx]; pctx.fillStyle = color; pctx.beginPath(); pctx.arc(p.x, p.y, 6.5, 0, Math.PI * 2); pctx.fill(); }); }
+      pctx.fillStyle = "#64748b"; pctx.font = "12px Segoe UI"; pctx.fillText("Expected path", 116, 44); pctx.fillText("What user sees", 332, 44);
+    }
+    function setProblemMode(mode) {
+      problemMode = mode;
+      problemButtons.forEach((b) => b.classList.toggle("active", b.dataset.mode === mode));
+      problemTitle.textContent = mode === "current" ? "Current combined behavior" : mode.charAt(0).toUpperCase() + mode.slice(1);
+      problemBody.textContent = problemText[mode];
+      renderProblemScene();
+    }
+    problemButtons.forEach((b) => b.addEventListener("click", () => setProblemMode(b.dataset.mode)));
+    function animateProblem() { pt += 0.006; if (pt > 1) pt = 0; renderProblemScene(); requestAnimationFrame(animateProblem); }
+    setProblemMode("current"); animateProblem();
+
+    const paramCanvas = document.getElementById("paramCanvas");
+    const c = paramCanvas.getContext("2d");
+    const simYaw = document.getElementById("simYaw"), simPitch = document.getElementById("simPitch"), simRange = document.getElementById("simRange"), simDbscan = document.getElementById("simDbscan"), simFps = document.getElementById("simFps");
+    const labels = { yaw: document.getElementById("simYawValue"), pitch: document.getElementById("simPitchValue"), range: document.getElementById("simRangeValue"), dbscan: document.getElementById("simDbscanValue"), fps: document.getElementById("simFpsValue") };
+    function clamp(v, min, max) { return Math.max(min, Math.min(max, v)); }
+    function setBar(id, value) {
+      const el = document.getElementById(id); const v = clamp(value, 0, 100);
+      el.style.width = `${v}%`; el.style.background = v >= 70 ? "linear-gradient(90deg,#b42318,#8ec5ff)" : v >= 45 ? "linear-gradient(90deg,#d97706,#8ec5ff)" : "linear-gradient(90deg,#0f6cbd,#8ec5ff)";
+    }
+    function drawParam(values) {
+      const w = paramCanvas.width, h = paramCanvas.height;
+      c.clearRect(0, 0, w, h); c.fillStyle = "#f8fbff"; c.fillRect(0, 0, w, h); c.strokeStyle = "#d8e3f0";
+      for (let i = 0; i < 5; i += 1) { const y = 44 + i * 42; c.beginPath(); c.moveTo(34, y); c.lineTo(w - 34, y); c.stroke(); }
+      const actual = [], est = [];
+      for (let i = 0; i < 42; i += 1) {
+        const t = i / 41; const y = 250 - Math.sin(t * Math.PI) * 170; actual.push({ x: 180, y });
+        const drift = values.yaw * 1.1 + values.pitch * 0.7; const visible = y > (250 - values.range * 40);
+        est.push(visible ? { x: 180 + (t - 0.5) * drift + 200, y: y + Math.max(0, values.fps - 5) * 1.6 } : null);
+      }
+      drawLine(c, actual, "#94a3b8", 3); drawLine(c, est, "#0f6cbd", 4, values.range < 3.3);
+      if (values.dbscan >= 4) { c.fillStyle = "#f97316"; c.beginPath(); c.arc(420, 118, 7, 0, Math.PI * 2); c.arc(445, 124, 7, 0, Math.PI * 2); c.fill(); }
+      c.fillStyle = "#64748b"; c.font = "12px Segoe UI"; c.fillText("Expected world path", 108, 36); c.fillText("Estimated path under current params", 330, 36);
+    }
+    function updateParam() {
+      const values = { yaw: Math.abs(Number(simYaw.value)), pitch: Math.abs(Number(simPitch.value)), range: Number(simRange.value), dbscan: Number(simDbscan.value), fps: Number(simFps.value) };
+      labels.yaw.textContent = simYaw.value; labels.pitch.textContent = simPitch.value; labels.range.textContent = Number(simRange.value).toFixed(1); labels.dbscan.textContent = simDbscan.value; labels.fps.textContent = simFps.value;
+      setBar("barDrift", clamp(values.yaw * 1.8 + values.pitch * 1.3, 0, 100));
+      setBar("barDisappear", clamp((4.6 - values.range) * 18 + values.pitch * 0.7, 0, 100));
+      setBar("barSplit", clamp((values.dbscan - 2) * 18 + values.yaw * 0.8, 0, 100));
+      setBar("barDelay", clamp((values.fps - 5) * 8 + values.pitch * 0.6, 0, 100));
+      drawParam(values);
+    }
+    [simYaw, simPitch, simRange, simDbscan, simFps].forEach((el) => el.addEventListener("input", updateParam));
+    updateParam();
+  </script>
+</body>
+</html>
