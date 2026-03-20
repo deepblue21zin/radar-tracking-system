@@ -2,15 +2,14 @@
 
 import argparse
 from collections import deque
+from dataclasses import dataclass
 import math
 import sys
-import time
+import threading
 import traceback
 from datetime import datetime
 from pathlib import Path
 from typing import Deque, Dict, Iterable, List, Optional, Sequence, Tuple
-
-import serial
 
 try:
     import matplotlib.pyplot as plt
@@ -25,12 +24,9 @@ except ImportError as exc:
 try:
     from ..cluster.dbscan_cluster import normalize_adaptive_eps_bands
     from ..parser.runtime_pipeline import (
-        MMWaveSerialReader,
-        build_runtime_processing_context,
-        process_runtime_frame,
-        send_config,
+        RuntimeFrameHookPayload,
+        run_realtime,
     )
-    from ..tracking.kalman_tracker import MultiObjectKalmanTracker
     from ..runtime_params import GLOBAL_RUNTIME_PARAM_DEFAULTS, resolve_runtime_param_defaults
 except ImportError:
     project_root = Path(__file__).resolve().parents[2]
@@ -38,12 +34,9 @@ except ImportError:
         sys.path.insert(0, str(project_root))
     from src.cluster.dbscan_cluster import normalize_adaptive_eps_bands
     from src.parser.runtime_pipeline import (
-        MMWaveSerialReader,
-        build_runtime_processing_context,
-        process_runtime_frame,
-        send_config,
+        RuntimeFrameHookPayload,
+        run_realtime,
     )
-    from src.tracking.kalman_tracker import MultiObjectKalmanTracker
     from src.runtime_params import GLOBAL_RUNTIME_PARAM_DEFAULTS, resolve_runtime_param_defaults
 
 
@@ -51,6 +44,8 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_ERROR_LOG_DIR = PROJECT_ROOT / "docs" / "error"
 VIEWER_PARAM_DEFAULT_KEYS = (
     "sensor_yaw_deg",
+    "sensor_pitch_deg",
+    "sensor_height_m",
     "snr_threshold",
     "max_noise",
     "min_range",
@@ -114,6 +109,24 @@ TRACK_COLOR_CYCLE = (
 )
 
 
+@dataclass
+class ViewerFrameSnapshot:
+    frame_number: int
+    frame_ts: float
+    raw_points: List[dict]
+    filtered_points: List[dict]
+    clusters: List[dict]
+    tracks: List[dict]
+    filter_ratio: float
+    removed_range: int
+    removed_axis_roi: int
+    removed_keepout: int
+    removed_static_clutter: int
+    parse_failures: int
+    resync_events: int
+    dropped_frames_estimate: int
+
+
 def append_viewer_error_log(args: argparse.Namespace, exc: Exception, error_log_dir: Path) -> Path:
     error_log_dir.mkdir(parents=True, exist_ok=True)
     log_path = error_log_dir / f"{datetime.now():%Y-%m-%d}.md"
@@ -144,6 +157,69 @@ def append_viewer_error_log(args: argparse.Namespace, exc: Exception, error_log_
     return log_path
 
 
+def _track_value(track: object, key: str, default: float | int = 0.0):
+    if isinstance(track, dict):
+        return track.get(key, default)
+    return getattr(track, key, default)
+
+
+def build_viewer_snapshot(payload: RuntimeFrameHookPayload) -> ViewerFrameSnapshot:
+    return ViewerFrameSnapshot(
+        frame_number=int(payload.frame.frame_number),
+        frame_ts=float(payload.frame_ts),
+        raw_points=[dict(point) for point in payload.raw_points],
+        filtered_points=[dict(point) for point in payload.filtered_points],
+        clusters=[dict(cluster) for cluster in payload.clusters],
+        tracks=[
+            {
+                "track_id": int(_track_value(track, "track_id", -1)),
+                "x": float(_track_value(track, "x", 0.0)),
+                "y": float(_track_value(track, "y", 0.0)),
+                "vx": float(_track_value(track, "vx", 0.0)),
+                "vy": float(_track_value(track, "vy", 0.0)),
+                "confidence": float(_track_value(track, "confidence", 0.0)),
+            }
+            for track in payload.tracks
+        ],
+        filter_ratio=float(payload.filter_stats.filter_ratio),
+        removed_range=int(payload.filter_stats.removed_range),
+        removed_axis_roi=int(payload.filter_stats.removed_axis_roi),
+        removed_keepout=int(payload.filter_stats.removed_keepout),
+        removed_static_clutter=int(payload.filter_stats.removed_static_clutter),
+        parse_failures=int(payload.reader_stats.parse_failures),
+        resync_events=int(payload.reader_stats.resync_events),
+        dropped_frames_estimate=int(payload.reader_stats.dropped_frames_estimate),
+    )
+
+
+class LatestRuntimeFrameBuffer:
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self._latest_snapshot: Optional[ViewerFrameSnapshot] = None
+        self._stop_requested = False
+        self.worker_error: Optional[BaseException] = None
+
+    def request_stop(self) -> None:
+        with self._lock:
+            self._stop_requested = True
+
+    def should_stop(self) -> bool:
+        with self._lock:
+            return self._stop_requested
+
+    def push_from_runtime(self, payload: RuntimeFrameHookPayload) -> Optional[bool]:
+        if self.should_stop():
+            return False
+        snapshot = build_viewer_snapshot(payload)
+        with self._lock:
+            self._latest_snapshot = snapshot
+        return True
+
+    def latest_snapshot(self) -> Optional[ViewerFrameSnapshot]:
+        with self._lock:
+            return self._latest_snapshot
+
+
 def build_arg_parser(defaults: dict) -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="3D live rail viewer for radar tracking debug")
     parser.add_argument("--params-file", default="config/runtime_params.json", help="JSON runtime parameter file")
@@ -153,6 +229,8 @@ def build_arg_parser(defaults: dict) -> argparse.ArgumentParser:
     parser.add_argument("--duration", type=int, default=None, help="Optional run duration in seconds")
     parser.add_argument("--debug", action="store_true", help="Enable parser debug output")
     parser.add_argument("--sensor-yaw-deg", type=float, default=defaults["sensor_yaw_deg"], help="Planar sensor yaw rotation in degrees")
+    parser.add_argument("--sensor-pitch-deg", type=float, default=defaults["sensor_pitch_deg"], help="Downward sensor pitch in degrees")
+    parser.add_argument("--sensor-height-m", type=float, default=defaults["sensor_height_m"], help="Sensor mounting height in meters")
     parser.add_argument(
         "--error-log-dir",
         default=str(DEFAULT_ERROR_LOG_DIR),
@@ -327,11 +405,14 @@ def build_track_z_map(tracks: Iterable[object], clusters: Iterable[dict], defaul
         best_distance = float("inf")
         best_z = default_z
         for cluster in cluster_list:
-            distance = math.hypot(float(track.x) - float(cluster["x"]), float(track.y) - float(cluster["y"]))
+            distance = math.hypot(
+                float(_track_value(track, "x", 0.0)) - float(cluster["x"]),
+                float(_track_value(track, "y", 0.0)) - float(cluster["y"]),
+            )
             if distance < best_distance:
                 best_distance = distance
                 best_z = float(cluster.get("z", default_z))
-        z_map[int(track.track_id)] = best_z if best_distance <= 1.5 else default_z
+        z_map[int(_track_value(track, "track_id", -1))] = best_z if best_distance <= 1.5 else default_z
     return z_map
 
 
@@ -345,12 +426,19 @@ def update_track_history(
 ) -> None:
     cutoff = frame_ts - history_sec
     for track in tracks:
-        track_id = int(track.track_id)
+        track_id = int(_track_value(track, "track_id", -1))
         trail = history.get(track_id)
         if trail is None or trail.maxlen != max_points:
             trail = deque(trail or [], maxlen=max_points)
             history[track_id] = trail
-        trail.append((frame_ts, float(track.x), float(track.y), float(track_z_map.get(track_id, 0.15))))
+        trail.append(
+            (
+                frame_ts,
+                float(_track_value(track, "x", 0.0)),
+                float(_track_value(track, "y", 0.0)),
+                float(track_z_map.get(track_id, 0.15)),
+            )
+        )
 
     stale_track_ids: List[int] = []
     for track_id, trail in history.items():
@@ -491,13 +579,17 @@ def scatter_tracks(ax, tracks: Iterable[object], track_z_map: Dict[int, float], 
         return
 
     for trk in track_list:
-        track_id = int(trk.track_id)
+        track_id = int(_track_value(trk, "track_id", -1))
         color = get_track_color(track_id)
         track_z = float(track_z_map.get(track_id, 0.15))
-        speed = math.hypot(float(trk.vx), float(trk.vy))
+        track_x = float(_track_value(trk, "x", 0.0))
+        track_y = float(_track_value(trk, "y", 0.0))
+        track_vx = float(_track_value(trk, "vx", 0.0))
+        track_vy = float(_track_value(trk, "vy", 0.0))
+        speed = math.hypot(track_vx, track_vy)
         ax.scatter(
-            [trk.x],
-            [trk.y],
+            [track_x],
+            [track_y],
             [track_z],
             c=color,
             s=120,
@@ -508,11 +600,11 @@ def scatter_tracks(ax, tracks: Iterable[object], track_z_map: Dict[int, float], 
         )
         if speed >= args.velocity_min_speed:
             ax.quiver(
-                trk.x,
-                trk.y,
+                track_x,
+                track_y,
                 track_z,
-                trk.vx * args.velocity_arrow_scale,
-                trk.vy * args.velocity_arrow_scale,
+                track_vx * args.velocity_arrow_scale,
+                track_vy * args.velocity_arrow_scale,
                 0.0,
                 color=color,
                 linewidth=1.6,
@@ -520,8 +612,8 @@ def scatter_tracks(ax, tracks: Iterable[object], track_z_map: Dict[int, float], 
                 arrow_length_ratio=0.22,
             )
         ax.text(
-            trk.x,
-            trk.y,
+            track_x,
+            track_y,
             track_z + 0.08,
             f"T{track_id} {speed:.2f}m/s",
             color=color,
@@ -535,16 +627,20 @@ def scatter_tracks_plan(ax, tracks: Iterable[object], args: argparse.Namespace) 
         return
 
     for trk in track_list:
-        track_id = int(trk.track_id)
+        track_id = int(_track_value(trk, "track_id", -1))
         color = get_track_color(track_id)
-        speed = math.hypot(float(trk.vx), float(trk.vy))
-        ax.scatter([trk.x], [trk.y], c=color, s=95, edgecolors="#14532d", linewidths=1.0, zorder=5)
+        track_x = float(_track_value(trk, "x", 0.0))
+        track_y = float(_track_value(trk, "y", 0.0))
+        track_vx = float(_track_value(trk, "vx", 0.0))
+        track_vy = float(_track_value(trk, "vy", 0.0))
+        speed = math.hypot(track_vx, track_vy)
+        ax.scatter([track_x], [track_y], c=color, s=95, edgecolors="#14532d", linewidths=1.0, zorder=5)
         if speed >= args.velocity_min_speed:
             ax.quiver(
-                [trk.x],
-                [trk.y],
-                [trk.vx * args.velocity_arrow_scale],
-                [trk.vy * args.velocity_arrow_scale],
+                [track_x],
+                [track_y],
+                [track_vx * args.velocity_arrow_scale],
+                [track_vy * args.velocity_arrow_scale],
                 angles="xy",
                 scale_units="xy",
                 scale=1.0,
@@ -553,7 +649,7 @@ def scatter_tracks_plan(ax, tracks: Iterable[object], args: argparse.Namespace) 
                 alpha=0.95,
                 zorder=4,
             )
-        ax.text(trk.x + 0.04, trk.y + 0.04, f"T{track_id} {speed:.2f}m/s", color=color, fontsize=9)
+        ax.text(track_x + 0.04, track_y + 0.04, f"T{track_id} {speed:.2f}m/s", color=color, fontsize=9)
 
 
 def add_legend(ax) -> None:
@@ -568,20 +664,21 @@ def add_legend(ax) -> None:
     ax.legend(handles=handles, loc="upper left")
 
 
-def add_status_overlay(ax, args: argparse.Namespace, filter_stats, reader_stats) -> None:
+def add_status_overlay(ax, args: argparse.Namespace, snapshot: ViewerFrameSnapshot) -> None:
     lines = [
         f"max_range={args.max_range if args.max_range is not None else 'inf'} m",
         f"sensor_yaw={args.sensor_yaw_deg:.1f} deg",
+        f"sensor_pitch={args.sensor_pitch_deg:.1f} deg height={args.sensor_height_m:.2f} m",
         (
-            f"removed range={filter_stats.removed_range} "
-            f"roi={filter_stats.removed_axis_roi} "
-            f"keepout={filter_stats.removed_keepout} "
-            f"static={filter_stats.removed_static_clutter}"
+            f"removed range={snapshot.removed_range} "
+            f"roi={snapshot.removed_axis_roi} "
+            f"keepout={snapshot.removed_keepout} "
+            f"static={snapshot.removed_static_clutter}"
         ),
         (
-            f"parser fail={reader_stats.parse_failures} "
-            f"resync={reader_stats.resync_events} "
-            f"dropped={reader_stats.dropped_frames_estimate}"
+            f"parser fail={snapshot.parse_failures} "
+            f"resync={snapshot.resync_events} "
+            f"dropped={snapshot.dropped_frames_estimate}"
         ),
     ]
     ax.text(
@@ -597,146 +694,183 @@ def add_status_overlay(ax, args: argparse.Namespace, filter_stats, reader_stats)
     )
 
 
+class LiveRuntimeFrameRenderer:
+    """Matplotlib renderer that draws the latest runtime snapshot."""
+
+    def __init__(self, args: argparse.Namespace):
+        self.args = args
+        self.fig = plt.figure(figsize=(15, 7))
+        self.ax_3d = self.fig.add_subplot(121, projection="3d")
+        self.ax_plan = self.fig.add_subplot(122)
+        self.fig.subplots_adjust(top=0.90, wspace=0.08)
+        plt.ion()
+        self.fig.show()
+        self.filtered_history: Deque[List[dict]] = deque(maxlen=max(1, args.point_persistence_frames))
+        self.track_history: Dict[int, Deque[Tuple[float, float, float, float]]] = {}
+        self.last_draw_time = 0.0
+        self.last_rendered_frame_number = -1
+
+    def close(self) -> None:
+        plt.ioff()
+        plt.close(self.fig)
+
+    def draw_snapshot(self, snapshot: ViewerFrameSnapshot) -> Optional[bool]:
+        if not plt.fignum_exists(self.fig.number):
+            return False
+
+        if snapshot.frame_number == self.last_rendered_frame_number:
+            return True
+
+        refresh_interval = 1.0 / max(self.args.max_vis_fps, 1.0)
+        if (snapshot.frame_ts - self.last_draw_time) < refresh_interval:
+            return True
+        self.last_draw_time = snapshot.frame_ts
+        self.last_rendered_frame_number = snapshot.frame_number
+
+        self.filtered_history.append([dict(point) for point in snapshot.filtered_points])
+        track_z_map = build_track_z_map(snapshot.tracks, snapshot.clusters)
+        update_track_history(
+            self.track_history,
+            snapshot.tracks,
+            track_z_map,
+            snapshot.frame_ts,
+            history_sec=self.args.track_history_sec,
+            max_points=self.args.track_history_points,
+        )
+
+        self.ax_3d.cla()
+        self.ax_plan.cla()
+        configure_axis(self.ax_3d, self.args)
+        configure_plan_axis(self.ax_plan, self.args)
+        draw_right_rail(self.ax_3d, self.args)
+        draw_right_rail_plan(self.ax_plan, self.args)
+        scatter_points(self.ax_3d, snapshot.raw_points, color="#9aa0a6", size=10, alpha=0.12, label="Raw")
+        scatter_persistent_points_3d(self.ax_3d, self.filtered_history)
+        scatter_points(
+            self.ax_3d,
+            snapshot.filtered_points,
+            color="#1f77b4",
+            size=20,
+            alpha=0.82,
+            label="Filtered",
+        )
+        scatter_clusters(self.ax_3d, snapshot.clusters)
+        draw_track_trails_3d(self.ax_3d, self.track_history)
+        scatter_tracks(self.ax_3d, snapshot.tracks, track_z_map, self.args)
+        add_legend(self.ax_3d)
+
+        scatter_points_plan(self.ax_plan, snapshot.raw_points, color="#9aa0a6", size=10, alpha=0.10)
+        scatter_persistent_points_plan(self.ax_plan, self.filtered_history)
+        scatter_points_plan(self.ax_plan, snapshot.filtered_points, color="#1f77b4", size=16, alpha=0.80)
+        scatter_clusters_plan(self.ax_plan, snapshot.clusters)
+        draw_track_trails_plan(self.ax_plan, self.track_history)
+        scatter_tracks_plan(self.ax_plan, snapshot.tracks, self.args)
+        add_status_overlay(self.ax_plan, self.args, snapshot)
+
+        self.ax_3d.set_title("3D space")
+        self.fig.suptitle(
+            f"frame={snapshot.frame_number} raw={len(snapshot.raw_points)} "
+            f"filtered={len(snapshot.filtered_points)} clusters={len(snapshot.clusters)} "
+            f"tracks={len(snapshot.tracks)} ratio={snapshot.filter_ratio:.2f}",
+            fontsize=16,
+        )
+        self.fig.canvas.draw_idle()
+        return True
+
+
+def _runtime_worker(args: argparse.Namespace, frame_buffer: LatestRuntimeFrameBuffer) -> None:
+    try:
+        run_realtime(
+            cli_port_name=args.cli_port,
+            data_port_name=args.data_port,
+            config_file=args.config,
+            duration_sec=args.duration,
+            debug=args.debug,
+            sensor_yaw_deg=args.sensor_yaw_deg,
+            sensor_pitch_deg=args.sensor_pitch_deg,
+            sensor_height_m=args.sensor_height_m,
+            snr_threshold=args.snr_threshold,
+            max_noise=args.max_noise,
+            min_range=args.min_range,
+            max_range=args.max_range,
+            filter_x_min=args.filter_x_min,
+            filter_x_max=args.filter_x_max,
+            filter_y_min=args.filter_y_min,
+            filter_y_max=args.filter_y_max,
+            filter_z_min=args.filter_z_min,
+            filter_z_max=args.filter_z_max,
+            disable_near_front_keepout=args.disable_near_front_keepout,
+            near_front_distance=args.near_front_distance,
+            near_front_half_width=args.near_front_half_width,
+            near_front_z_min=args.near_front_z_min,
+            near_front_z_max=args.near_front_z_max,
+            disable_right_rail_keepout=args.disable_right_rail_keepout,
+            right_rail_x=args.right_rail_x,
+            right_rail_width=args.right_rail_width,
+            right_rail_y_start=args.right_rail_y_start,
+            right_rail_length=args.right_rail_length,
+            right_rail_z_base=args.right_rail_z_base,
+            right_rail_height=args.right_rail_height,
+            right_rail_padding=args.right_rail_padding,
+            disable_static_clutter_filter=args.disable_static_clutter_filter,
+            static_clutter_padding=args.static_clutter_padding,
+            static_v_min=args.static_v_min,
+            static_max_snr=args.static_max_snr,
+            dbscan_eps=args.dbscan_eps,
+            dbscan_min_samples=args.dbscan_min_samples,
+            use_velocity_feature=args.use_velocity_feature,
+            dbscan_velocity_weight=args.dbscan_velocity_weight,
+            dbscan_adaptive_eps_bands=args.dbscan_adaptive_eps_bands,
+            association_gate=args.association_gate,
+            max_misses=args.max_misses,
+            min_hits=args.min_hits,
+            report_miss_tolerance=args.report_miss_tolerance,
+            scenario="live_viewer",
+            disable_file_log=True,
+            params_file=args.params_file,
+            console_output=False,
+            frame_hook=frame_buffer.push_from_runtime,
+        )
+    except BaseException as exc:
+        frame_buffer.worker_error = exc
+    finally:
+        frame_buffer.request_stop()
+
+
 def run_viewer(args: argparse.Namespace) -> None:
-    fig = plt.figure(figsize=(15, 7))
-    ax_3d = fig.add_subplot(121, projection="3d")
-    ax_plan = fig.add_subplot(122)
-    fig.subplots_adjust(top=0.90, wspace=0.08)
-    plt.ion()
-    fig.show()
-
-    tracker = MultiObjectKalmanTracker(
-        association_gate=args.association_gate,
-        max_misses=args.max_misses,
-        min_hits=args.min_hits,
-        report_miss_tolerance=args.report_miss_tolerance,
+    frame_buffer = LatestRuntimeFrameBuffer()
+    renderer = LiveRuntimeFrameRenderer(args)
+    worker = threading.Thread(
+        target=_runtime_worker,
+        args=(args, frame_buffer),
+        name="live-runtime-worker",
+        daemon=True,
     )
-    processing_context = build_runtime_processing_context(
-        sensor_yaw_deg=args.sensor_yaw_deg,
-        snr_threshold=args.snr_threshold,
-        max_noise=args.max_noise,
-        min_range=args.min_range,
-        max_range=args.max_range,
-        filter_x_min=args.filter_x_min,
-        filter_x_max=args.filter_x_max,
-        filter_y_min=args.filter_y_min,
-        filter_y_max=args.filter_y_max,
-        filter_z_min=args.filter_z_min,
-        filter_z_max=args.filter_z_max,
-        disable_near_front_keepout=args.disable_near_front_keepout,
-        near_front_distance=args.near_front_distance,
-        near_front_half_width=args.near_front_half_width,
-        near_front_z_min=args.near_front_z_min,
-        near_front_z_max=args.near_front_z_max,
-        disable_right_rail_keepout=args.disable_right_rail_keepout,
-        right_rail_x=args.right_rail_x,
-        right_rail_width=args.right_rail_width,
-        right_rail_y_start=args.right_rail_y_start,
-        right_rail_length=args.right_rail_length,
-        right_rail_z_base=args.right_rail_z_base,
-        right_rail_height=args.right_rail_height,
-        right_rail_padding=args.right_rail_padding,
-        disable_static_clutter_filter=args.disable_static_clutter_filter,
-        static_clutter_padding=args.static_clutter_padding,
-        static_v_min=args.static_v_min,
-        static_max_snr=args.static_max_snr,
-        dbscan_eps=args.dbscan_eps,
-        dbscan_min_samples=args.dbscan_min_samples,
-        use_velocity_feature=args.use_velocity_feature,
-        dbscan_velocity_weight=args.dbscan_velocity_weight,
-        dbscan_adaptive_eps_bands=args.dbscan_adaptive_eps_bands,
-    )
-    filtered_history: Deque[List[dict]] = deque(maxlen=max(1, args.point_persistence_frames))
-    track_history: Dict[int, Deque[Tuple[float, float, float, float]]] = {}
-    dbscan_import_error_printed = False
+    worker.start()
+    try:
+        while True:
+            if not plt.fignum_exists(renderer.fig.number):
+                frame_buffer.request_stop()
+                break
 
-    with serial.Serial(args.cli_port, 115200, timeout=0.1) as cli_port, serial.Serial(
-        args.data_port, 921600, timeout=0.05
-    ) as data_port:
-        send_config(cli_port, Path(args.config))
-        time.sleep(0.2)
-        data_port.reset_input_buffer()
-        reader = MMWaveSerialReader(debug=args.debug)
+            snapshot = frame_buffer.latest_snapshot()
+            if snapshot is not None:
+                renderer.draw_snapshot(snapshot)
 
-        start_time = time.time()
-        last_draw_time = 0.0
+            plt.pause(0.001)
 
-        try:
-            while plt.fignum_exists(fig.number):
-                frame = reader.read_frame(data_port)
-                now = time.time()
-                if args.duration is not None and (now - start_time) >= args.duration:
+            if frame_buffer.should_stop() and not worker.is_alive():
+                latest_snapshot = frame_buffer.latest_snapshot()
+                if latest_snapshot is None or latest_snapshot.frame_number == renderer.last_rendered_frame_number:
                     break
-
-                if frame is None:
-                    plt.pause(0.001)
-                    continue
-
-                frame_result = process_runtime_frame(
-                    frame,
-                    processing_context,
-                    tracker=tracker,
-                    frame_ts=now,
-                )
-                raw_points = frame_result.raw_points
-                filtered_points = frame_result.filtered_points
-                filter_stats = frame_result.filter_stats
-                clusters = frame_result.clusters
-                tracks = frame_result.tracks
-                if frame_result.dbscan_import_error is not None and not dbscan_import_error_printed:
-                    print(f"[VIEWER_WARN] DBSCAN disabled: {frame_result.dbscan_import_error}")
-                    dbscan_import_error_printed = True
-                filtered_history.append([dict(point) for point in filtered_points])
-                track_z_map = build_track_z_map(tracks, clusters)
-                update_track_history(
-                    track_history,
-                    tracks,
-                    track_z_map,
-                    now,
-                    history_sec=args.track_history_sec,
-                    max_points=args.track_history_points,
-                )
-
-                refresh_interval = 1.0 / max(args.max_vis_fps, 1.0)
-                if (now - last_draw_time) < refresh_interval:
-                    continue
-                last_draw_time = now
-
-                ax_3d.cla()
-                ax_plan.cla()
-                configure_axis(ax_3d, args)
-                configure_plan_axis(ax_plan, args)
-                draw_right_rail(ax_3d, args)
-                draw_right_rail_plan(ax_plan, args)
-                scatter_points(ax_3d, raw_points, color="#9aa0a6", size=10, alpha=0.12, label="Raw")
-                scatter_persistent_points_3d(ax_3d, filtered_history)
-                scatter_points(ax_3d, filtered_points, color="#1f77b4", size=20, alpha=0.82, label="Filtered")
-                scatter_clusters(ax_3d, clusters)
-                draw_track_trails_3d(ax_3d, track_history)
-                scatter_tracks(ax_3d, tracks, track_z_map, args)
-                add_legend(ax_3d)
-
-                scatter_points_plan(ax_plan, raw_points, color="#9aa0a6", size=10, alpha=0.10)
-                scatter_persistent_points_plan(ax_plan, filtered_history)
-                scatter_points_plan(ax_plan, filtered_points, color="#1f77b4", size=16, alpha=0.80)
-                scatter_clusters_plan(ax_plan, clusters)
-                draw_track_trails_plan(ax_plan, track_history)
-                scatter_tracks_plan(ax_plan, tracks, args)
-                add_status_overlay(ax_plan, args, filter_stats, reader.stats)
-
-                ax_3d.set_title("3D space")
-                fig.suptitle(
-                    f"frame={frame.frame_number} raw={len(raw_points)} filtered={len(filtered_points)} "
-                    f"clusters={len(clusters)} tracks={len(tracks)} ratio={filter_stats.filter_ratio:.2f}",
-                    fontsize=16,
-                )
-                fig.canvas.draw_idle()
-                plt.pause(0.001)
-        except KeyboardInterrupt:
-            print("[VIEWER] stopped by user")
-        finally:
-            plt.ioff()
-            plt.close(fig)
+    except KeyboardInterrupt:
+        frame_buffer.request_stop()
+        print("[VIEWER] stopped by user")
+    finally:
+        worker.join(timeout=1.0)
+        if frame_buffer.worker_error is not None and not isinstance(frame_buffer.worker_error, KeyboardInterrupt):
+            raise frame_buffer.worker_error
+        renderer.close()
 
 
 def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:

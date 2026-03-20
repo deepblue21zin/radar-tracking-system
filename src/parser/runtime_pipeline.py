@@ -9,7 +9,7 @@ import traceback
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, List, Optional, Sequence
+from typing import Callable, Dict, List, Optional, Sequence
 
 import serial
 
@@ -24,6 +24,15 @@ try:
         DEFAULT_RUNTIME_PARAMS_RELATIVE,
         GLOBAL_RUNTIME_PARAM_DEFAULTS,
         resolve_runtime_param_defaults,
+    )
+    from ..reporting.runtime_experiment_report import (
+        render_runtime_experiment_report,
+        update_experiment_report_index,
+    )
+    from ..reporting.performance_log_report import render_performance_log
+    from ..reporting.generate_runtime_doxygen_portal import (
+        OUTPUT_PATH as DOXYGEN_RUNTIME_PORTAL_PATH,
+        main as generate_runtime_doxygen_portal,
     )
     from ..visualization.runtime_log_overview import render_runtime_log_overview_png
 except ImportError:
@@ -41,6 +50,15 @@ except ImportError:
         GLOBAL_RUNTIME_PARAM_DEFAULTS,
         resolve_runtime_param_defaults,
     )
+    from reporting.runtime_experiment_report import (
+        render_runtime_experiment_report,
+        update_experiment_report_index,
+    )
+    from reporting.performance_log_report import render_performance_log
+    from reporting.generate_runtime_doxygen_portal import (
+        OUTPUT_PATH as DOXYGEN_RUNTIME_PORTAL_PATH,
+        main as generate_runtime_doxygen_portal,
+    )
     from visualization.runtime_log_overview import render_runtime_log_overview_png
 
 
@@ -48,9 +66,13 @@ WORD = [1, 2**8, 2**16, 2**24]
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_LOG_DIR = PROJECT_ROOT / "evidence" / "runtime_logs"
 DEFAULT_ERROR_LOG_DIR = PROJECT_ROOT / "docs" / "error"
+DEFAULT_EXPERIMENT_REPORT_DIR = PROJECT_ROOT / "docs" / "experiment_reports"
+DEFAULT_PERFORMANCE_LOG_PATH = PROJECT_ROOT / "docs" / "performance_log.md"
 
 RUNNER_PARAM_DEFAULT_KEYS = (
     "sensor_yaw_deg",
+    "sensor_pitch_deg",
+    "sensor_height_m",
     "snr_threshold",
     "max_noise",
     "min_range",
@@ -114,6 +136,13 @@ RUNNER_PARAM_DEFAULT_KEYS = (
     "scenario",
     "roi_tag",
     "disable_file_log",
+    "disable_text_log",
+    "disable_overview_png",
+    "experiment_title",
+    "experiment_problem",
+    "experiment_hypothesis",
+    "experiment_change",
+    "experiment_next_step",
     "coord_preview_count",
     "coord_preview_every",
 )
@@ -146,6 +175,8 @@ class ReaderStats:
 @dataclass
 class RuntimeProcessingContext:
     sensor_yaw_deg: float = 0.0
+    sensor_pitch_deg: float = 0.0
+    sensor_height_m: float = 0.0
     snr_threshold: float = 8.0
     max_noise: Optional[float] = None
     min_range: float = 0.0
@@ -179,12 +210,35 @@ class RuntimeFrameProcessingResult:
     dbscan_import_error: Optional[Exception] = None
 
 
+@dataclass
+class RuntimeFrameHookPayload:
+    frame: ParsedFrame
+    frame_gap: int
+    frame_ts: float
+    raw_points: List[dict]
+    filtered_points: List[dict]
+    filter_stats: FilterStats
+    clusters: List[dict]
+    tracks: List[object]
+    pipeline_latency_ms: float
+    reader_stats: ReaderStats
+    control_decision: Optional[object] = None
+
+
 class CsvRunLogger:
-    def __init__(self, enabled: bool, log_dir: Path, scenario: str, roi_tag: str):
+    def __init__(
+        self,
+        enabled: bool,
+        log_dir: Path,
+        scenario: str,
+        roi_tag: str,
+        enable_text_log: bool = True,
+    ):
         self.enabled = enabled
         self.log_dir = log_dir
         self.scenario = scenario
         self.roi_tag = roi_tag
+        self.enable_text_log = enable_text_log
         self.run_id = datetime.now().strftime("%Y%m%d_%H%M%S")
         self.frame_log_path: Optional[Path] = None
         self.text_log_path: Optional[Path] = None
@@ -198,11 +252,13 @@ class CsvRunLogger:
 
         log_dir.mkdir(parents=True, exist_ok=True)
         self.frame_log_path = log_dir / f"frames_{self.run_id}.csv"
-        self.text_log_path = log_dir / f"frames_{self.run_id}.log"
         self.summary_log_path = log_dir / "run_summary.csv"
+        if self.enable_text_log:
+            self.text_log_path = log_dir / f"frames_{self.run_id}.log"
 
         self._frame_fp = self.frame_log_path.open("w", newline="", encoding="utf-8")
-        self._text_fp = self.text_log_path.open("w", encoding="utf-8")
+        if self.text_log_path is not None:
+            self._text_fp = self.text_log_path.open("w", encoding="utf-8")
         self._frame_writer = csv.DictWriter(
             self._frame_fp,
             fieldnames=[
@@ -729,22 +785,40 @@ def format_filter_sample_preview(points: List[dict], sample_source: str) -> str:
     return prefix + "[" + ", ".join(preview_items) + "]"
 
 
-def rotate_points_xy(points: List[dict], yaw_deg: float) -> List[dict]:
-    if abs(float(yaw_deg)) <= 1e-6 or not points:
+def transform_points_to_world(
+    points: List[dict],
+    yaw_deg: float = 0.0,
+    pitch_deg: float = 0.0,
+    sensor_height_m: float = 0.0,
+) -> List[dict]:
+    if not points:
         return points
 
     yaw_rad = math.radians(float(yaw_deg))
     cos_yaw = math.cos(yaw_rad)
     sin_yaw = math.sin(yaw_rad)
-    rotated_points: List[dict] = []
+    pitch_rad = math.radians(float(pitch_deg))
+    cos_pitch = math.cos(pitch_rad)
+    sin_pitch = math.sin(pitch_rad)
+    transformed_points: List[dict] = []
     for point in points:
         x_val = float(point.get("x", 0.0))
         y_val = float(point.get("y", 0.0))
-        rotated_point = dict(point)
-        rotated_point["x"] = (x_val * cos_yaw) - (y_val * sin_yaw)
-        rotated_point["y"] = (x_val * sin_yaw) + (y_val * cos_yaw)
-        rotated_points.append(rotated_point)
-    return rotated_points
+        z_val = float(point.get("z", 0.0))
+
+        # Positive pitch means the sensor is tilted downward. Convert the
+        # sensor-frame point into a leveled frame before applying yaw.
+        leveled_x = x_val
+        leveled_y = (y_val * cos_pitch) + (z_val * sin_pitch)
+        leveled_z = (-y_val * sin_pitch) + (z_val * cos_pitch)
+
+        transformed_point = dict(point)
+        transformed_point["x"] = (leveled_x * cos_yaw) - (leveled_y * sin_yaw)
+        transformed_point["y"] = (leveled_x * sin_yaw) + (leveled_y * cos_yaw)
+        transformed_point["z"] = leveled_z + float(sensor_height_m)
+        transformed_point["ground_range"] = math.hypot(transformed_point["x"], transformed_point["y"])
+        transformed_points.append(transformed_point)
+    return transformed_points
 
 
 def build_keepout_boxes(
@@ -822,6 +896,8 @@ def build_static_clutter_boxes(
 
 def build_runtime_processing_context(
     sensor_yaw_deg: float = 0.0,
+    sensor_pitch_deg: float = 0.0,
+    sensor_height_m: float = 0.0,
     snr_threshold: float = 8.0,
     max_noise: Optional[float] = None,
     min_range: float = 0.0,
@@ -884,6 +960,8 @@ def build_runtime_processing_context(
     )
     return RuntimeProcessingContext(
         sensor_yaw_deg=float(sensor_yaw_deg),
+        sensor_pitch_deg=float(sensor_pitch_deg),
+        sensor_height_m=float(sensor_height_m),
         snr_threshold=float(snr_threshold),
         max_noise=max_noise,
         min_range=float(min_range),
@@ -917,7 +995,12 @@ def process_runtime_frame(
     effective_frame_ts = time.time() if frame_ts is None else float(frame_ts)
 
     raw_points = points_dict_to_list(frame.points, frame.num_obj)
-    raw_points = rotate_points_xy(raw_points, processing_context.sensor_yaw_deg)
+    raw_points = transform_points_to_world(
+        raw_points,
+        yaw_deg=processing_context.sensor_yaw_deg,
+        pitch_deg=processing_context.sensor_pitch_deg,
+        sensor_height_m=processing_context.sensor_height_m,
+    )
     filtered_points, filter_stats = preprocess_points(
         raw_points,
         snr_threshold=processing_context.snr_threshold,
@@ -974,6 +1057,8 @@ def run_realtime(
     duration_sec: Optional[int] = None,
     debug: bool = False,
     sensor_yaw_deg: float = 0.0,
+    sensor_pitch_deg: float = 0.0,
+    sensor_height_m: float = 0.0,
     snr_threshold: float = 8.0,
     max_noise: Optional[float] = None,
     min_range: float = 0.0,
@@ -1038,9 +1123,18 @@ def run_realtime(
     roi_tag: str = "",
     log_dir: Optional[str] = None,
     disable_file_log: bool = False,
+    disable_text_log: bool = False,
+    disable_overview_png: bool = False,
+    experiment_title: str = "",
+    experiment_problem: str = "",
+    experiment_hypothesis: str = "",
+    experiment_change: str = "",
+    experiment_next_step: str = "",
     coord_preview_count: int = 0,
     coord_preview_every: int = 1,
     params_file: Optional[str] = None,
+    console_output: bool = True,
+    frame_hook: Optional[Callable[[RuntimeFrameHookPayload], Optional[bool]]] = None,
 ) -> None:
     config_path = Path(config_file)
     params_file_text = str(params_file) if params_file is not None else ""
@@ -1054,10 +1148,12 @@ def run_realtime(
         log_dir=Path(log_dir) if log_dir is not None else DEFAULT_LOG_DIR,
         scenario=scenario,
         roi_tag=roi_tag,
+        enable_text_log=not disable_text_log,
     )
 
     def emit_log(line: str) -> None:
-        print(line)
+        if console_output:
+            print(line)
         logger.log_text(line)
 
     coord_preview_count = max(0, int(coord_preview_count))
@@ -1065,6 +1161,8 @@ def run_realtime(
     filter_sample_count = max(0, int(filter_sample_count))
     processing_context = build_runtime_processing_context(
         sensor_yaw_deg=sensor_yaw_deg,
+        sensor_pitch_deg=sensor_pitch_deg,
+        sensor_height_m=sensor_height_m,
         snr_threshold=snr_threshold,
         max_noise=max_noise,
         min_range=min_range,
@@ -1192,6 +1290,8 @@ def run_realtime(
         emit_log(
             "[FILTER_CFG] "
             f"sensor_yaw={sensor_yaw_deg:.1f}deg "
+            f"sensor_pitch={sensor_pitch_deg:.1f}deg "
+            f"sensor_height={sensor_height_m:.2f}m "
             f"axis_roi=x[{filter_x_min if filter_x_min is not None else '-inf'},{filter_x_max if filter_x_max is not None else 'inf'}] "
             f"y[{filter_y_min if filter_y_min is not None else '-inf'},{filter_y_max if filter_y_max is not None else 'inf'}] "
             f"z[{filter_z_min if filter_z_min is not None else '-inf'},{filter_z_max if filter_z_max is not None else 'inf'}] "
@@ -1292,6 +1392,25 @@ def run_realtime(
 
                     frame_gap = 0 if prev_frame_number is None else max(0, frame.frame_number - prev_frame_number - 1)
                     prev_frame_number = frame.frame_number
+
+                    if frame_hook is not None:
+                        hook_result = frame_hook(
+                            RuntimeFrameHookPayload(
+                                frame=frame,
+                                frame_gap=frame_gap,
+                                frame_ts=now,
+                                raw_points=raw_points,
+                                filtered_points=filtered_points,
+                                filter_stats=filter_stats,
+                                clusters=clusters,
+                                tracks=tracks,
+                                pipeline_latency_ms=pipeline_latency_ms,
+                                reader_stats=reader.stats,
+                                control_decision=control_decision,
+                            )
+                        )
+                        if hook_result is False:
+                            break
 
                     total_packet_bytes += frame.packet_bytes
                     total_num_obj += frame.num_obj
@@ -1505,12 +1624,47 @@ def run_realtime(
                 control_writer.close()
 
             overview_png_path: Optional[Path] = None
-            if not disable_file_log and logger.frame_log_path is not None:
+            if not disable_file_log and not disable_overview_png and logger.frame_log_path is not None:
                 logger.close_frame_log()
                 try:
                     overview_png_path = render_runtime_log_overview_png(logger.frame_log_path)
                 except Exception as exc:
                     emit_log(f"[WARN] failed to render overview PNG: {exc}")
+
+            experiment_report_path: Optional[Path] = None
+            experiment_index_path: Optional[Path] = None
+            performance_log_path: Optional[Path] = None
+            doxygen_runtime_portal_path: Optional[Path] = None
+            if not disable_file_log and logger.frame_log_path is not None:
+                try:
+                    experiment_report_path = render_runtime_experiment_report(
+                        summary=summary,
+                        frame_csv_path=logger.frame_log_path,
+                        report_root=DEFAULT_EXPERIMENT_REPORT_DIR,
+                        text_log_path=logger.text_log_path,
+                        overview_png_path=overview_png_path,
+                        experiment_title=experiment_title,
+                        experiment_problem=experiment_problem,
+                        experiment_hypothesis=experiment_hypothesis,
+                        experiment_change=experiment_change,
+                        experiment_next_step=experiment_next_step,
+                    )
+                    experiment_index_path = update_experiment_report_index(DEFAULT_EXPERIMENT_REPORT_DIR)
+                except Exception as exc:
+                    emit_log(f"[WARN] failed to render experiment report: {exc}")
+                try:
+                    performance_log_path = render_performance_log(
+                        run_summary_path=logger.summary_log_path,
+                        output_path=DEFAULT_PERFORMANCE_LOG_PATH,
+                        experiment_report_root=DEFAULT_EXPERIMENT_REPORT_DIR,
+                    )
+                except Exception as exc:
+                    emit_log(f"[WARN] failed to render performance log: {exc}")
+                try:
+                    generate_runtime_doxygen_portal()
+                    doxygen_runtime_portal_path = DOXYGEN_RUNTIME_PORTAL_PATH
+                except Exception as exc:
+                    emit_log(f"[WARN] failed to render runtime doxygen portal: {exc}")
 
             if not disable_file_log:
                 emit_log(f"[LOG] frame_log={logger.frame_log_path}")
@@ -1519,6 +1673,14 @@ def run_realtime(
                 emit_log(f"[LOG] summary_log={logger.summary_log_path}")
                 if overview_png_path is not None:
                     emit_log(f"[LOG] overview_png={overview_png_path}")
+                if experiment_report_path is not None:
+                    emit_log(f"[LOG] experiment_report={experiment_report_path}")
+                if experiment_index_path is not None:
+                    emit_log(f"[LOG] experiment_index={experiment_index_path}")
+                if performance_log_path is not None:
+                    emit_log(f"[LOG] performance_log={performance_log_path}")
+                if doxygen_runtime_portal_path is not None:
+                    emit_log(f"[LOG] doxygen_runtime_portal={doxygen_runtime_portal_path}")
             emit_log(
                 "[SUMMARY] "
                 f"frames={frames} avg_fps={summary['avg_fps']:.2f} avg_packet={summary['avg_packet_bytes']:.1f}B "
@@ -1542,6 +1704,8 @@ def build_arg_parser(defaults: Dict[str, object]) -> argparse.ArgumentParser:
     parser.add_argument("--duration", type=int, default=None, help="Run duration in seconds")
     parser.add_argument("--debug", action="store_true", help="Enable parser debug output")
     parser.add_argument("--sensor-yaw-deg", type=float, default=defaults["sensor_yaw_deg"])
+    parser.add_argument("--sensor-pitch-deg", type=float, default=defaults["sensor_pitch_deg"])
+    parser.add_argument("--sensor-height-m", type=float, default=defaults["sensor_height_m"])
 
     parser.add_argument("--snr-threshold", type=float, default=defaults["snr_threshold"])
     parser.add_argument("--max-noise", type=float, default=defaults["max_noise"])
@@ -1617,6 +1781,13 @@ def build_arg_parser(defaults: Dict[str, object]) -> argparse.ArgumentParser:
     parser.add_argument("--roi-tag", default=defaults["roi_tag"])
     parser.add_argument("--log-dir", default=str(DEFAULT_LOG_DIR))
     parser.add_argument("--disable-file-log", action="store_true", default=defaults["disable_file_log"])
+    parser.add_argument("--disable-text-log", action="store_true", default=defaults["disable_text_log"])
+    parser.add_argument("--disable-overview-png", action="store_true", default=defaults["disable_overview_png"])
+    parser.add_argument("--experiment-title", default=defaults["experiment_title"])
+    parser.add_argument("--experiment-problem", default=defaults["experiment_problem"])
+    parser.add_argument("--experiment-hypothesis", default=defaults["experiment_hypothesis"])
+    parser.add_argument("--experiment-change", default=defaults["experiment_change"])
+    parser.add_argument("--experiment-next-step", default=defaults["experiment_next_step"])
     parser.add_argument("--coord-preview-count", type=int, default=defaults["coord_preview_count"])
     parser.add_argument("--coord-preview-every", type=int, default=defaults["coord_preview_every"])
     parser.add_argument("--error-log-dir", default=str(DEFAULT_ERROR_LOG_DIR))
@@ -1648,6 +1819,8 @@ def main() -> None:
             duration_sec=args.duration,
             debug=args.debug,
             sensor_yaw_deg=args.sensor_yaw_deg,
+            sensor_pitch_deg=args.sensor_pitch_deg,
+            sensor_height_m=args.sensor_height_m,
             snr_threshold=args.snr_threshold,
             max_noise=args.max_noise,
             min_range=args.min_range,
@@ -1712,6 +1885,13 @@ def main() -> None:
             roi_tag=args.roi_tag,
             log_dir=args.log_dir,
             disable_file_log=args.disable_file_log,
+            disable_text_log=args.disable_text_log,
+            disable_overview_png=args.disable_overview_png,
+            experiment_title=args.experiment_title,
+            experiment_problem=args.experiment_problem,
+            experiment_hypothesis=args.experiment_hypothesis,
+            experiment_change=args.experiment_change,
+            experiment_next_step=args.experiment_next_step,
             coord_preview_count=args.coord_preview_count,
             coord_preview_every=args.coord_preview_every,
             params_file=args.params_file,
