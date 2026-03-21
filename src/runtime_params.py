@@ -15,6 +15,8 @@ DEFAULT_RUNTIME_PARAMS_PATH = PROJECT_ROOT / DEFAULT_RUNTIME_PARAMS_RELATIVE
 
 GLOBAL_RUNTIME_PARAM_DEFAULTS: Dict[str, Any] = {
     "sensor_yaw_deg": 0.0,
+    "sensor_pitch_deg": 0.0,
+    "sensor_height_m": 0.0,
     "snr_threshold": 110.0,
     "max_noise": None,
     "min_range": 0.0,
@@ -81,6 +83,13 @@ GLOBAL_RUNTIME_PARAM_DEFAULTS: Dict[str, Any] = {
     "scenario": "live_run",
     "roi_tag": "",
     "disable_file_log": False,
+    "disable_text_log": False,
+    "disable_overview_png": False,
+    "experiment_title": "",
+    "experiment_problem": "",
+    "experiment_hypothesis": "",
+    "experiment_change": "",
+    "experiment_next_step": "",
     "coord_preview_count": 0,
     "coord_preview_every": 1,
     "x_min": -2.5,

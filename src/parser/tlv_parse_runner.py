@@ -14,9 +14,9 @@ try:
         main,
         parse_args,
         process_runtime_frame,
-        rotate_points_xy,
         run_realtime,
         send_config,
+        transform_points_to_world,
     )
 except ImportError:
     from runtime_pipeline import (
@@ -32,10 +32,13 @@ except ImportError:
         main,
         parse_args,
         process_runtime_frame,
-        rotate_points_xy,
         run_realtime,
         send_config,
+        transform_points_to_world,
     )
+
+
+rotate_points_xy = transform_points_to_world
 
 
 if __name__ == "__main__":
