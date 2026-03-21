@@ -6,12 +6,13 @@
 `TLV Parse -> Preprocess -> DBSCAN -> Kalman Tracking -> Control / Runtime Metrics`
 
 ## 1. 현재 실행 구조
-- 기존 실행 명령은 그대로 `src/parser/tlv_parse_runner.py`를 사용한다.
-- 실제 런타임 구현은 `src/parser/runtime_pipeline.py`에 있다.
-- `src/parser/tlv_parse_runner.py`는 기존 명령과 import 호환을 위한 래퍼다.
-- 공용 기본 파라미터는 `config/runtime_params.json`에 있다.
-- 러너와 3D viewer는 둘 다 `--params-file`로 같은 기본값을 읽는다.
-- CLI 인자를 직접 주면 JSON 기본값보다 우선한다.
+- 기존 실행 명령은 그대로 `src/parser/tlv_parse_runner.py`를 사용합니다.
+- 실제 런타임 구현은 `src/parser/runtime_pipeline.py`에 있습니다.
+- `src/parser/tlv_parse_runner.py`는 기존 명령과 import 호환을 위한 래퍼입니다.
+- 공용 기본 파라미터는 `config/runtime_params.json`에 있습니다.
+- 러너와 3D viewer는 둘 다 `--params-file`로 같은 기본값을 읽습니다.
+- CLI 인자를 직접 주면 JSON 기본값보다 우선합니다.
+- run 종료 후 실험 리포트와 성능 로그는 `src/reporting/` 보조 모듈이 생성합니다.
 
 ## 2. 디렉터리 구조
 ```text
@@ -22,6 +23,7 @@ radar-tracking-system/
 │  ├─ architecture.md
 │  ├─ capstone_pipeline_spec.md
 │  ├─ doxygen_overview.md
+│  ├─ experiment_reports/
 │  └─ ...
 ├─ evidence/
 ├─ experiments/
@@ -43,6 +45,11 @@ radar-tracking-system/
    ├─ communication/
    │  ├─ control_protocol.py
    │  └─ stm32_control_rx_example.c
+   ├─ reporting/
+   │  ├─ runtime_experiment_report.py
+   │  ├─ performance_log_report.py
+   │  ├─ generate_runtime_code_browser.py
+   │  └─ generate_runtime_doxygen_portal.py
    ├─ visualization/
    │  └─ live_rail_viewer.py
    ├─ runtime_params.py
@@ -75,31 +82,31 @@ matplotlib==3.9.2
 - `matplotlib`는 `src/visualization/live_rail_viewer.py` 3D 디버그 뷰어에 필요합니다.
 
 ## 4. 빠른 시작
-프로젝트 루트(`radar-tracking-system/radar-tracking-system`)에서 실행한다.
+프로젝트 루트(`radar-tracking-system/radar-tracking-system`)에서 실행합니다.
 
 ### 4.1 기본 실행
-가장 먼저 정상 동작 여부를 확인할 때 쓰는 명령이다.
+가장 먼저 정상 동작 여부를 확인할 때 쓰는 명령입니다.
 
 ```bash
 python src/parser/tlv_parse_runner.py --cli-port COM11 --data-port COM10 --config config/profile_3d.cfg
 ```
 
 ### 4.2 60초 baseline 측정
-summary CSV와 FPS 로그를 비교할 때 추천하는 명령이다.
+summary CSV와 FPS 로그를 비교할 때 추천하는 명령입니다. keepout/static clutter를 끄고 full-frame baseline을 봅니다.
 
 ```bash
 python src/parser/tlv_parse_runner.py --cli-port COM11 --data-port COM10 --config config/profile_3d.cfg --duration 60 --scenario baseline --roi-tag full_frame --disable-near-front-keepout --disable-right-rail-keepout --disable-static-clutter-filter
 ```
 
 ### 4.3 parser-only 비교 run
-viewer 없이 parser/runtime 안정성만 보고 싶을 때 쓴다. text log flush와 overview PNG 생성을 꺼서 비교 run을 가볍게 만든다.
+viewer 없이 parser/runtime 안정성만 보고 싶을 때 씁니다. text log flush와 overview PNG 생성을 꺼서 비교 run을 가볍게 만듭니다.
 
 ```bash
 python src/parser/tlv_parse_runner.py --cli-port COM11 --data-port COM10 --config config/profile_3d.cfg --duration 60 --disable-text-log --disable-overview-png
 ```
 
 ### 4.4 좌표 preview를 함께 보고 싶을 때
-filtered point, cluster, track 좌표 일부를 콘솔과 frame CSV에 같이 남긴다.
+filtered point, cluster, track 좌표 일부를 콘솔과 frame CSV에 같이 남깁니다.
 
 ```bash
 python src/parser/tlv_parse_runner.py --cli-port COM11 --data-port COM10 --config config/profile_3d.cfg --duration 40 --coord-preview-count 3 --coord-preview-every 10
@@ -110,7 +117,7 @@ python src/parser/tlv_parse_runner.py --cli-port COM11 --data-port COM10 --confi
 - `--coord-preview-every 10`: 10프레임마다 한 번만 출력
 
 ### 4.5 파라미터를 한 곳에서 반복 튜닝할 때
-반복적으로 바꾸는 값은 `config/runtime_params.json`에서 관리하는 것이 가장 편하다.
+반복적으로 바꾸는 값은 `config/runtime_params.json`에서 관리하는 것이 가장 편합니다.
 
 추천 흐름:
 - 기본값은 `config/runtime_params.json`을 그대로 사용
@@ -122,21 +129,28 @@ python src/parser/tlv_parse_runner.py --cli-port COM11 --data-port COM10 --confi
 python src/parser/tlv_parse_runner.py --cli-port COM11 --data-port COM10 --config config/profile_3d.cfg --dbscan-eps 0.55 --association-gate 1.2
 ```
 
-### 4.6 파서 debug를 보고 싶을 때
-header 값과 parser 내부 상태를 확인할 때 쓴다.
+### 4.6 기록용 run
+실험 제목/문제/가설/변경/다음 단계를 같이 남기고 싶을 때 씁니다. run 종료 후 `docs/experiment_reports/`와 `docs/performance_log.md`가 갱신됩니다.
+
+```bash
+python src/parser/tlv_parse_runner.py --cli-port COM11 --data-port COM10 --config config/profile_3d.cfg --duration 60 --disable-text-log --disable-overview-png --experiment-title "front back walk with pitch correction" --experiment-problem "viewer에서 대각선 이동처럼 보이고 추적이 자주 끊김" --experiment-hypothesis "pitch/height 미보정과 parser continuity가 동시에 영향" --experiment-change "sensor_pitch_deg=30, sensor_height_m=1.74 적용 후 parser-only 비교" --experiment-next-step "viewer 실시간 run에서 yaw/pitch 보정과 draw 분리 효과 재확인"
+```
+
+### 4.7 파서 debug를 보고 싶을 때
+header 값과 parser 내부 상태를 확인할 때 씁니다.
 
 ```bash
 python src/parser/tlv_parse_runner.py --cli-port COM11 --data-port COM10 --config config/profile_3d.cfg --debug --duration 30
 ```
 
-### 4.7 3D 시각화로 보고 싶을 때
-오른쪽 rail이 있는 3D 디버그 viewer를 실행한다.
+### 4.8 3D 시각화로 보고 싶을 때
+오른쪽 rail이 있는 3D 디버그 viewer를 실행합니다. viewer는 `run_realtime()`의 공용 처리 경로를 그대로 사용하고, runtime worker와 draw loop를 분리해서 최신 결과만 그립니다.
 
 ```bash
 python src/visualization/live_rail_viewer.py --cli-port COM11 --data-port COM10 --config config/profile_3d.cfg
 ```
 
-시연용으로는 draw 부담을 줄이기 위해 이 명령을 먼저 추천한다.
+시연용으로는 draw 부담을 줄이기 위해 이 명령을 먼저 추천합니다.
 
 ```bash
 python src/visualization/live_rail_viewer.py --cli-port COM11 --data-port COM10 --config config/profile_3d.cfg --max-vis-fps 5
@@ -148,21 +162,23 @@ python src/visualization/live_rail_viewer.py --cli-port COM11 --data-port COM10 
 python src/visualization/live_rail_viewer.py --cli-port COM11 --data-port COM10 --config config/profile_3d.cfg --sensor-yaw-deg 20 --sensor-pitch-deg 30 --sensor-height-m 1.74 --max-vis-fps 5
 ```
 
-설치가 천장/상부 브래킷처럼 높고 아래로 기울어진 경우:
-- `config/runtime_params.json`의 `sensor.sensor_pitch_deg`, `sensor.sensor_height_m`를 실제 설치값으로 맞춘다.
-- 현재 기본 params 파일은 예시로 `sensor_yaw_deg=20`, `sensor_pitch_deg=30`, `sensor_height_m=1.74`를 사용한다.
-- world 좌표 보정은 runtime/viewer 공용 처리 경로에 적용되므로, viewer와 runner가 같은 좌표계를 본다.
+현재 `config/runtime_params.json` 예시 기본값은 다음 설치를 기준으로 잡혀 있습니다.
+- `sensor_yaw_deg = 20`
+- `sensor_pitch_deg = 30`
+- `sensor_height_m = 1.74`
+- `filter_z_min = -0.2`, `filter_z_max = 2.2`
+- `max_range = 3.5`
 
 문제가 생기면:
-- 예외가 `docs/error/YYYY-MM-DD.md`에 자동 기록된다.
-- direct script 실행과 module import 경로를 모두 고려한 fallback import가 들어 있다.
-- ghost track가 많이 남으면 `--report-miss-tolerance 0` 또는 `--max-misses 3` 쪽을 먼저 확인한다.
+- 예외가 `docs/error/YYYY-MM-DD.md`에 자동 기록됩니다.
+- direct script 실행과 module import 경로를 모두 고려한 fallback import가 들어 있습니다.
+- ghost track가 많이 남으면 `--report-miss-tolerance 0` 또는 `--max-misses 3` 쪽을 먼저 확인합니다.
 
-### 4.8 실행 시 확인 포인트
+### 4.9 실행 시 확인 포인트
 - 시작 직후 `[CFG] << Done` 응답이 정상적으로 이어지는지 확인
 - 프레임 로그가 `frame=... gap=... packet=... raw=... filtered=... clusters=... tracks=...` 형태로 이어지는지 확인
 - `send_config()` 이후 data port input buffer가 한 번 비워진 뒤 읽기가 시작되는지 확인
-- 가능하면 `Ctrl-C`보다 `--duration`으로 종료해 summary 비교가 쉬운 run을 남긴다
+- 가능하면 `Ctrl-C`보다 `--duration`으로 종료해 summary 비교가 쉬운 run을 남깁니다
 
 예상 로그:
 ```text
@@ -173,7 +189,7 @@ frame=123 gap=0 packet=2848B raw=87 filtered=51 clusters=3 tracks=2 parser_ms=2.
 ```
 
 ## 5. 실행 인자
-기본 실행 커맨드는 `src/parser/tlv_parse_runner.py`이고, 실제 구현은 `src/parser/runtime_pipeline.py`에 있다.
+기본 실행 커맨드는 `src/parser/tlv_parse_runner.py`이고, 실제 구현은 `src/parser/runtime_pipeline.py`에 있습니다.
 
 공용:
 - `--params-file`: 공용 JSON 파라미터 파일 경로, 기본값 `config/runtime_params.json`
@@ -200,11 +216,11 @@ frame=123 gap=0 packet=2848B raw=87 filtered=51 clusters=3 tracks=2 parser_ms=2.
 - `--snr-threshold`
 - `--max-noise`
 - `--min-range`
-- `--max-range`, 현재 기본값 `3.0m`
+- `--max-range`, 현재 예시 params 기본값 `3.5m`
 - `--filter-x-min`, `--filter-x-max`
 - `--filter-y-min`, `--filter-y-max`
-- `--filter-z-min`, 현재 기본값 `-0.6m`
-- `--filter-z-max`, 현재 기본값 `1.0m`
+- `--filter-z-min`, 현재 예시 params 기본값 `-0.2m`
+- `--filter-z-max`, 현재 예시 params 기본값 `2.2m`
 - `--disable-near-front-keepout`
 - `--disable-right-rail-keepout`
 - `--disable-static-clutter-filter`
@@ -213,7 +229,8 @@ frame=123 gap=0 packet=2848B raw=87 filtered=51 clusters=3 tracks=2 parser_ms=2.
 - `--dbscan-eps`
 - `--dbscan-min-samples`
 - `--use-velocity-feature`
-- `--dbscan-velocity-weight`: `(x, y, v)` 사용 시 속도 축 스케일
+- `--dbscan-velocity-weight`
+- `--dbscan-adaptive-eps-bands`
 
 트래커:
 - `--association-gate`
@@ -229,11 +246,23 @@ frame=123 gap=0 packet=2848B raw=87 filtered=51 clusters=3 tracks=2 parser_ms=2.
 - `--control-slow-distance`
 - `--control-stop-distance`
 - `--control-resume-distance`
+- `--control-belt-axis-x`, `--control-belt-axis-y`
+- `--control-moving-confirm-sec`
+- `--control-static-hold-sec`
+- `--control-static-disp-window-sec`
+- `--control-static-disp-threshold`
 - `--control-out-port`
 
 시각화:
-- `src/visualization/live_rail_viewer.py`도 `--params-file`을 지원한다.
-- viewer는 공용 filter/clustering 기본값과 함께 시야 범위(`x/y/z`) 및 `--max-vis-fps`를 읽는다.
+- `src/visualization/live_rail_viewer.py`도 `--params-file`을 지원합니다.
+- viewer는 공용 filter/clustering 기본값과 함께 시야 범위(`x/y/z`), `--max-vis-fps`, point history/trail 관련 인자를 읽습니다.
+- 주요 viewer 인자:
+  - `--max-vis-fps`
+  - `--point-persistence-frames`
+  - `--track-history-sec`
+  - `--track-history-points`
+  - `--velocity-arrow-scale`
+  - `--velocity-min-speed`
 
 ## 6. 데이터 계약
 파서 출력(`ParsedFrame`):
@@ -269,19 +298,15 @@ frame=123 gap=0 packet=2848B raw=87 filtered=51 clusters=3 tracks=2 parser_ms=2.
 - 런타임 FPS 로그: 표준 출력
 - 프레임 CSV/텍스트 로그: `evidence/runtime_logs/`
 - 실험 결과 기록: `docs/performance_log.md`
-  - `run_summary.csv`와 frame CSV를 기준으로 자동 생성된다.
-  - 최신 run, 이전 run 대비 증감, continuity/분할/제거 원인이 함께 정리된다.
 - run별 구조화 리포트: `docs/experiment_reports/`
-- 문제/가설/수정 흐름 요약: `docs/experiment_journal.md`
-- 전체 구조/데이터 흐름/현재 문제를 한 페이지로 보는 HTML: `docs/runtime_system_onepage.html`
-- 스토리보드형 전체 설명/시뮬레이션 HTML: `docs/runtime_storyboard.html`
-- Doxygen 스타일 코드/실험 포털: `docs/doxygen/html/runtime_portal.html`
-- 전체 코드를 좌측 파일 목록으로 읽는 HTML 브라우저: `docs/runtime_code_browser.html`
+- 실험 과정 저널: `docs/experiment_journal.md`
+- 원페이지 시스템 개요: `docs/runtime_system_onepage.html`
+- 스토리보드 설명 페이지: `docs/runtime_storyboard.html`
+- 코드 브라우저 페이지: `docs/runtime_code_browser.html`
 
 시연/저부하 실행 팁:
-- `live_rail_viewer.py`는 runtime 결과를 그대로 받되, read/process와 draw를 분리해 최신 상태만 그리도록 구성되어 있다.
-- `live_rail_viewer.py`는 이미 `disable_file_log=True`, `console_output=False`로 runtime loop에 붙으므로 시연 중 frame CSV/text log를 남기지 않는다.
-- `tlv_parse_runner.py`로 parser-only 안정성을 볼 때는 `--disable-text-log --disable-overview-png`를 먼저 켜서 flush 부담을 줄일 수 있다.
+- `live_rail_viewer.py`는 `disable_file_log=True`, `console_output=False`로 runtime loop에 붙으므로 시연 중 frame CSV/text log를 남기지 않습니다.
+- `tlv_parse_runner.py`로 parser-only 안정성을 볼 때는 `--disable-text-log --disable-overview-png`를 먼저 켜서 flush 부담을 줄일 수 있습니다.
 
 ## 8. 트러블슈팅
 1. `ModuleNotFoundError: sklearn` 또는 `filterpy`
@@ -309,15 +334,16 @@ frame=123 gap=0 packet=2848B raw=87 filtered=51 clusters=3 tracks=2 parser_ms=2.
 - keepout/static clutter 기본값이 장면과 맞는지 확인
 
 ## 9. 개발 가이드
-- 반복 튜닝 값은 우선 `config/runtime_params.json`에 모은다.
-- 새 기능은 파이프라인 계약을 깨지 않도록 모듈 단위로 추가한다.
-- 구조 변경 시 `README.md`, `docs/architecture.md`, `docs/doxygen_overview.md`를 함께 갱신한다.
-- 과거 장애/수정 로그는 `docs/error/`, `docs/correction report/`에 날짜 기준으로 남긴다.
+- 반복 튜닝 값은 우선 `config/runtime_params.json`에 모읍니다.
+- 새 기능은 파이프라인 계약을 깨지 않도록 모듈 단위로 추가합니다.
+- 구조 변경 시 `README.md`, `docs/architecture.md`, `docs/doxygen_overview.md`를 함께 갱신합니다.
+- 과거 장애/수정 로그는 `docs/error/`, `docs/correction report/`에 날짜 기준으로 남깁니다.
 
 ## 10. 관련 문서
+- 시스템 요구사항 포털: `docs/system_requirements/index.html`
+- 시스템 요구사항 패키지: `docs/system_requirements/README.md`
 - 원페이지 시스템 개요 HTML: `docs/runtime_system_onepage.html`
 - 스토리보드형 전체 설명 HTML: `docs/runtime_storyboard.html`
-- Doxygen 스타일 런타임 포털: `docs/doxygen/html/runtime_portal.html`
 - 전체 코드 브라우저 HTML: `docs/runtime_code_browser.html`
 - 아키텍처: `docs/architecture.md`
 - Doxygen 개요: `docs/doxygen_overview.md`

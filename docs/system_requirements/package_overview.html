@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Radar SW Requirements Package</title>
+  <link rel="stylesheet" href="./req_theme.css">
+</head>
+<body>
+  <div class="page">
+    <section class="hero">
+      <div class="eyebrow">REQ Package</div>
+      <h1>Radar SW Requirements Package</h1>
+      <p>이 패키지는 레이더 SW를 알고리즘 실험 프로젝트가 아니라, 양산형 자동차 임베디드 SW 후보 아키텍처로 설명하기 위한 요구사항 묶음입니다. 목적은 RTOS 구조, 성능 수치, 입출력 계약, fail-safe 정책을 같은 프레임 안에서 읽히게 만드는 것입니다.</p>
+      <div class="hero-actions">
+        <a class="button button-primary" href="./index.html">REQ 포털로 돌아가기</a>
+        <a class="button button-secondary" href="./README.md">md 원문 보기</a>
+      </div>
+    </section>
+
+    <section class="section">
+      <h2>Package Goals</h2>
+      <div class="grid">
+        <article class="card"><h3>RTOS / Task</h3><p>task period, priority, queue depth, WCET, bounded buffer를 명시적으로 문서화합니다.</p></article>
+        <article class="card"><h3>Performance</h3><p>avg뿐 아니라 max/P95 latency, FPS, CPU, memory를 같이 비교할 수 있게 합니다.</p></article>
+        <article class="card"><h3>Interface</h3><p>radar input, tracking output, health bit, control packet을 계약 관점으로 정리합니다.</p></article>
+        <article class="card"><h3>Safety</h3><p>stale/malformed/overrun/dropped에서 무엇을 안전 상태로 볼지 정책화합니다.</p></article>
+      </div>
+    </section>
+
+    <section class="section">
+      <h2>Package Summary</h2>
+      <table>
+        <thead><tr><th>Domain</th><th>Intent</th><th>Current State</th><th>Main Gap</th></tr></thead>
+        <tbody>
+          <tr><td>RTOS task architecture</td><td>Radar Rx / Parse / Track / Control / HealthMonitor를 주기 task로 분리</td><td><span class="status partial">Partial</span></td><td>priority/period/queue depth/WCET 표와 FreeRTOS skeleton 부재</td></tr>
+          <tr><td>Performance benchmark</td><td>avg/max/p95 latency, fps, drop, CPU, memory를 before/after로 비교</td><td><span class="status partial">Partial</span></td><td>summary가 avg 중심이고 CPU/RAM/alloc 계측 부재</td></tr>
+          <tr><td>Interface contract</td><td>radar input, tracking output, health/status, control packet 계약 명시</td><td><span class="status partial">Partial</span></td><td>EMPTY_SCENE와 SENSOR_UNHEALTHY 구분 부족</td></tr>
+          <tr><td>Safety policy</td><td>stale/malformed/overrun/dropped 시 fail-safe 정책 정의</td><td><span class="status partial">Partial</span></td><td>host health gate와 제어 차단 규칙 부재</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section class="section">
+      <h2>Current Evidence Already Present</h2>
+      <p><span class="code-chip">docs/architecture.md</span><span class="code-chip">README.md</span><span class="code-chip">docs/FMEA.md</span><span class="code-chip">src/parser/runtime_pipeline.py</span><span class="code-chip">src/communication/control_protocol.py</span><span class="code-chip">src/communication/stm32_control_rx_example.c</span></p>
+      <div class="subgrid">
+        <article class="card"><h3>이미 있는 실무형 근거</h3><ul><li>고정 길이 byte buffer</li><li>parser health counter</li><li>CRC8 fixed packet</li><li>STM32 timeout stop</li></ul></article>
+        <article class="card"><h3>아직 채워야 할 근거</h3><ul><li>FreeRTOS task skeleton</li><li>max/p95 latency summary</li><li>health/status bitfield</li><li>health gate 기반 RESUME 금지</li></ul></article>
+      </div>
+    </section>
+
+    <section class="section">
+      <h2>Reading Order</h2>
+      <ol>
+        <li><a href="./req_rtos_task_architecture.html">REQ-RTOS-TASK-ARCHITECTURE</a></li>
+        <li><a href="./req_interface_contract.html">REQ-INTERFACE-CONTRACT</a></li>
+        <li><a href="./req_safety_policy.html">REQ-SAFETY-POLICY</a></li>
+        <li><a href="./req_performance_benchmark.html">REQ-PERFORMANCE-BENCHMARK</a></li>
+      </ol>
+      <div class="back-row">
+        <a href="./index.html">포털로 돌아가기</a>
+      </div>
+    </section>
+  </div>
+</body>
+</html>

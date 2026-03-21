@@ -1,0 +1,596 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Radar SW Requirements Portal</title>
+  <style>
+    :root {
+      --bg: #f3efe7;
+      --panel: #fffdf8;
+      --panel-strong: #fffaf2;
+      --line: #d7cfc2;
+      --line-strong: #beb19c;
+      --text: #1f2a30;
+      --muted: #66737a;
+      --accent: #1f6a58;
+      --accent-soft: #dff2ea;
+      --warn: #a05021;
+      --warn-soft: #f9e7da;
+      --plan: #5b4fb1;
+      --plan-soft: #ece8fb;
+      --ink-soft: #edf4f7;
+      --shadow: 0 14px 36px rgba(30, 37, 42, 0.08);
+      --radius-xl: 28px;
+      --radius-lg: 22px;
+      --radius-md: 16px;
+    }
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body {
+      margin: 0;
+      font-family: "Segoe UI", "Noto Sans KR", sans-serif;
+      color: var(--text);
+      background:
+        radial-gradient(circle at top left, rgba(31,106,88,0.12), transparent 34%),
+        radial-gradient(circle at bottom right, rgba(91,79,177,0.12), transparent 30%),
+        var(--bg);
+      line-height: 1.6;
+    }
+    .page {
+      max-width: 1280px;
+      margin: 0 auto;
+      padding: 28px 20px 64px;
+    }
+    .hero {
+      background: linear-gradient(135deg, #183731, #234d45 58%, #315b54);
+      color: #f6fbf8;
+      border-radius: var(--radius-xl);
+      padding: 34px;
+      box-shadow: var(--shadow);
+      position: relative;
+      overflow: hidden;
+    }
+    .hero::after {
+      content: "";
+      position: absolute;
+      inset: auto -60px -80px auto;
+      width: 260px;
+      height: 260px;
+      border-radius: 50%;
+      background: rgba(255,255,255,0.08);
+      filter: blur(4px);
+    }
+    .eyebrow {
+      display: inline-block;
+      padding: 7px 12px;
+      border-radius: 999px;
+      background: rgba(255,255,255,0.12);
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      margin-bottom: 14px;
+    }
+    .hero h1 {
+      margin: 0 0 12px;
+      font-size: clamp(30px, 4vw, 52px);
+      line-height: 1.05;
+      letter-spacing: -0.03em;
+      position: relative;
+      z-index: 1;
+    }
+    .hero p {
+      margin: 0;
+      max-width: 930px;
+      color: rgba(246,251,248,0.88);
+      font-size: 16px;
+      position: relative;
+      z-index: 1;
+    }
+    .hero-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-top: 22px;
+      position: relative;
+      z-index: 1;
+    }
+    .button {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      text-decoration: none;
+      padding: 11px 15px;
+      border-radius: 999px;
+      font-weight: 700;
+      transition: transform 0.15s ease, box-shadow 0.15s ease;
+    }
+    .button:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 8px 18px rgba(18, 24, 28, 0.14);
+    }
+    .button-primary {
+      background: #edf8f3;
+      color: #17352e;
+    }
+    .button-secondary {
+      background: rgba(255,255,255,0.11);
+      color: #f6fbf8;
+      border: 1px solid rgba(255,255,255,0.16);
+    }
+    .section {
+      margin-top: 28px;
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: var(--radius-lg);
+      padding: 24px;
+      box-shadow: var(--shadow);
+    }
+    .section h2 {
+      margin: 0 0 12px;
+      font-size: 25px;
+      letter-spacing: -0.02em;
+    }
+    .section p {
+      margin: 0 0 14px;
+      color: var(--muted);
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 14px;
+    }
+    .card {
+      border: 1px solid var(--line);
+      border-radius: var(--radius-md);
+      padding: 18px;
+      background: #fff;
+    }
+    .card h3 {
+      margin: 10px 0 8px;
+      font-size: 18px;
+      letter-spacing: -0.01em;
+    }
+    .card p {
+      margin: 0;
+      font-size: 14px;
+    }
+    .status {
+      display: inline-flex;
+      align-items: center;
+      padding: 4px 10px;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+    .implemented { background: var(--accent-soft); color: var(--accent); }
+    .partial { background: var(--warn-soft); color: var(--warn); }
+    .planned { background: var(--plan-soft); color: var(--plan); }
+    .nav-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+      gap: 14px;
+    }
+    .nav-card {
+      border: 1px solid var(--line);
+      border-radius: var(--radius-md);
+      padding: 18px;
+      background: linear-gradient(180deg, #ffffff, #fbf8f1);
+    }
+    .nav-card h3 {
+      margin: 10px 0 8px;
+      font-size: 19px;
+    }
+    .nav-card p {
+      margin: 0 0 14px;
+      min-height: 64px;
+      font-size: 14px;
+    }
+    .nav-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+    .nav-actions a {
+      text-decoration: none;
+      font-size: 13px;
+      font-weight: 700;
+      color: var(--accent);
+      background: var(--accent-soft);
+      padding: 8px 12px;
+      border-radius: 999px;
+    }
+    .nav-actions a.secondary {
+      color: var(--muted);
+      background: #f1ece2;
+    }
+    .req-section {
+      margin-top: 22px;
+      border: 1px solid var(--line-strong);
+      border-radius: 22px;
+      overflow: hidden;
+      background: #fff;
+    }
+    .req-header {
+      padding: 24px;
+      background: linear-gradient(180deg, #fbf7ef, #f4eee1);
+      border-bottom: 1px solid var(--line);
+    }
+    .req-title-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      align-items: center;
+      margin-bottom: 10px;
+    }
+    .req-header h3 {
+      margin: 0;
+      font-size: 26px;
+      letter-spacing: -0.02em;
+    }
+    .req-header p {
+      margin: 0;
+      color: var(--muted);
+      max-width: 980px;
+    }
+    .req-body {
+      padding: 24px;
+      background: #fffdf9;
+    }
+    .meta-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 12px;
+      margin-bottom: 18px;
+    }
+    .meta {
+      padding: 16px;
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      background: var(--panel-strong);
+    }
+    .meta strong {
+      display: block;
+      margin-bottom: 6px;
+      font-size: 12px;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+    }
+    .meta span {
+      font-size: 15px;
+      font-weight: 700;
+    }
+    .subgrid {
+      display: grid;
+      grid-template-columns: 1.15fr 0.85fr;
+      gap: 16px;
+      margin-top: 18px;
+    }
+    .panel {
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      padding: 18px;
+      background: #fff;
+    }
+    .panel h4 {
+      margin: 0 0 10px;
+      font-size: 17px;
+    }
+    .panel ul {
+      margin: 0;
+      padding-left: 18px;
+      color: var(--muted);
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      overflow: hidden;
+      background: #fff;
+    }
+    th, td {
+      padding: 12px 14px;
+      border-bottom: 1px solid #ece5d9;
+      vertical-align: top;
+      text-align: left;
+      font-size: 14px;
+    }
+    th {
+      background: #f7f1e6;
+      font-size: 12px;
+      font-weight: 800;
+      color: #5b655f;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+    tr:last-child td { border-bottom: none; }
+    .footer-links {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-top: 18px;
+    }
+    .footer-links a {
+      text-decoration: none;
+      color: var(--text);
+      padding: 10px 12px;
+      border-radius: 999px;
+      background: #f4efe6;
+      font-weight: 700;
+      font-size: 13px;
+    }
+    .top-link {
+      margin-left: auto;
+    }
+    @media (max-width: 980px) {
+      .subgrid { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <div class="page" id="top">
+    <section class="hero">
+      <div class="eyebrow">Automotive Radar SW REQ</div>
+      <h1>Radar SW Requirements Portal</h1>
+      <p>레이더 SW를 현대모비스 같은 자동차 SW 직무 관점에서 설명하기 위한 요구사항 포털입니다. 첫 화면과 상세 화면의 가독성 느낌이 끊기지 않도록, 상세 REQ도 같은 톤의 카드형 문서로 이 페이지 안에서 바로 읽을 수 있게 구성했습니다.</p>
+      <div class="hero-actions">
+        <a class="button button-primary" href="#req-navigation">REQ 바로 보기</a>
+        <a class="button button-secondary" href="./package_overview.html">패키지 개요 보기</a>
+      </div>
+    </section>
+
+    <section class="section">
+      <h2>Requirement Domains</h2>
+      <div class="grid">
+        <article class="card"><span class="status partial">Partial</span><h3>RTOS / Task Architecture</h3><p>bounded buffer와 periodic control 예제는 있지만, task period/priority/queue depth/WCET와 FreeRTOS reference skeleton은 아직 더 필요합니다.</p></article>
+        <article class="card"><span class="status partial">Partial</span><h3>Performance Benchmark</h3><p>avg latency/FPS/drop은 계측하지만, max/P95/CPU/peak memory/post-init alloc count는 아직 빠져 있습니다.</p></article>
+        <article class="card"><span class="status partial">Partial</span><h3>Interface Contract</h3><p>packet/track/control 구조는 있으나, health/status bit와 EMPTY_SCENE vs SENSOR_UNHEALTHY 분리가 아직 약합니다.</p></article>
+        <article class="card"><span class="status planned">Planned</span><h3>Safety Policy</h3><p>timeout stop와 malformed counter는 있지만, health gate 기반 RESUME 금지 정책은 아직 문서와 코드가 더 필요합니다.</p></article>
+      </div>
+    </section>
+
+    <section class="section" id="req-navigation">
+      <h2>REQ Navigation</h2>
+      <p>아래 버튼은 raw markdown이 아니라, 같은 스타일의 상세 요구사항 섹션으로 이동합니다.</p>
+      <div class="nav-grid">
+        <article class="nav-card">
+          <span class="status partial">Partial</span>
+          <h3>REQ-RTOS</h3>
+          <p>task period, priority, queue depth, bounded buffer, WCET를 정의하고 FreeRTOS 기준 구조로 재정리합니다.</p>
+          <div class="nav-actions">
+            <a href="#req-rtos">RTOS REQ 열기</a>
+            <a class="secondary" href="./req_rtos_task_architecture.html">상세 페이지</a>
+          </div>
+        </article>
+        <article class="nav-card">
+          <span class="status partial">Partial</span>
+          <h3>REQ-PERF</h3>
+          <p>avg/max/p95 latency, FPS, CPU, memory, allocation count까지 benchmark 항목을 명시합니다.</p>
+          <div class="nav-actions">
+            <a href="#req-perf">Performance REQ 열기</a>
+            <a class="secondary" href="./req_performance_benchmark.html">상세 페이지</a>
+          </div>
+        </article>
+        <article class="nav-card">
+          <span class="status partial">Partial</span>
+          <h3>REQ-IF</h3>
+          <p>입력 frame, tracking output, health status, control packet을 계약 관점으로 명시합니다.</p>
+          <div class="nav-actions">
+            <a href="#req-if">Interface REQ 열기</a>
+            <a class="secondary" href="./req_interface_contract.html">상세 페이지</a>
+          </div>
+        </article>
+        <article class="nav-card">
+          <span class="status planned">Planned</span>
+          <h3>REQ-SAFE</h3>
+          <p>stale, malformed, overrun, dropped burst에서 fail-safe로 어떻게 가는지 정책으로 분리합니다.</p>
+          <div class="nav-actions">
+            <a href="#req-safe">Safety REQ 열기</a>
+            <a class="secondary" href="./req_safety_policy.html">상세 페이지</a>
+          </div>
+        </article>
+      </div>
+    </section>
+
+    <section class="req-section" id="req-rtos">
+      <div class="req-header">
+        <div class="req-title-row">
+          <span class="status partial">Partial</span>
+          <h3>REQ-RTOS-TASK-ARCHITECTURE</h3>
+        </div>
+        <p>현재 Python host runtime을 자동차 임베디드 관점의 RTOS task 구조로 다시 표현한 target architecture입니다. 핵심은 period, priority, queue depth, WCET, bounded buffer를 명시하는 것입니다.</p>
+      </div>
+      <div class="req-body">
+        <div class="meta-grid">
+          <div class="meta"><strong>Main Goal</strong><span>Task period / priority / WCET 정의</span></div>
+          <div class="meta"><strong>Current Evidence</strong><span>bounded UART buffer, latest snapshot buffer, 10 ms control tick</span></div>
+          <div class="meta"><strong>Main Gap</strong><span>FreeRTOS skeleton 및 queue 표 부재</span></div>
+          <div class="meta"><strong>Target Positioning</strong><span>양산형 task architecture 제안</span></div>
+        </div>
+        <table>
+          <thead><tr><th>Task</th><th>Trigger / Period</th><th>Priority</th><th>Queue / Buffer</th><th>Target WCET</th></tr></thead>
+          <tbody>
+            <tr><td><strong>RadarRxTask</strong></td><td>event-driven (UART DMA HT/TC or ISR notify)</td><td>5</td><td>ring buffer 16 KB minimum</td><td>&lt;= 1 ms</td></tr>
+            <tr><td><strong>FrameParseTask</strong></td><td>20 ms periodic or frame-ready event</td><td>4</td><td>frame queue depth 2</td><td>&lt;= 3 ms</td></tr>
+            <tr><td><strong>TrackTask</strong></td><td>20 ms periodic</td><td>3</td><td>cluster queue depth 2</td><td>&lt;= 5 ms</td></tr>
+            <tr><td><strong>ControlTxTask</strong></td><td>10 ms periodic</td><td>4</td><td>control queue depth 4</td><td>&lt;= 1 ms</td></tr>
+            <tr><td><strong>HealthMonitorTask</strong></td><td>100 ms periodic</td><td>2</td><td>health event queue depth 8</td><td>&lt;= 0.5 ms</td></tr>
+          </tbody>
+        </table>
+        <div class="subgrid">
+          <div class="panel">
+            <h4>현재 코드에서 이미 보이는 것</h4>
+            <ul>
+              <li>fixed-size byte buffer 기반 UART reader</li>
+              <li>latest snapshot only viewer buffer</li>
+              <li>STM32 쪽 10 ms periodic control loop 예제</li>
+            </ul>
+          </div>
+          <div class="panel">
+            <h4>다음 구현 추천</h4>
+            <ul>
+              <li>`freertos_radar_app_skeleton.c/.h` 추가</li>
+              <li>queue depth / priority / timeout constant 명시</li>
+              <li>startup 이후 dynamic allocation 금지 검증 hook 추가</li>
+            </ul>
+          </div>
+        </div>
+        <div class="footer-links"><a href="#top">위로</a><a href="./req_rtos_task_architecture.html" class="top-link">상세 페이지 보기</a></div>
+      </div>
+    </section>
+
+    <section class="req-section" id="req-perf">
+      <div class="req-header">
+        <div class="req-title-row">
+          <span class="status partial">Partial</span>
+          <h3>REQ-PERFORMANCE-BENCHMARK</h3>
+        </div>
+        <p>"추적이 된다"가 아니라 "얼마나 빨라졌고 얼마나 안정화됐는지"를 보여주기 위한 benchmark 명세입니다. 평균뿐 아니라 max/P95까지 포트폴리오에 넣는 것이 핵심입니다.</p>
+      </div>
+      <div class="req-body">
+        <div class="meta-grid">
+          <div class="meta"><strong>Already Logged</strong><span>avg FPS / avg parser / avg pipeline / dropped</span></div>
+          <div class="meta"><strong>Missing</strong><span>max / P95 / CPU / peak RSS / alloc count</span></div>
+          <div class="meta"><strong>Best Portfolio Form</strong><span>Before vs After 표</span></div>
+          <div class="meta"><strong>Priority</strong><span>summary 확장 + perf report 보강</span></div>
+        </div>
+        <table>
+          <thead><tr><th>Metric Group</th><th>Required Metric</th><th>Why It Matters</th></tr></thead>
+          <tbody>
+            <tr><td>Throughput</td><td>`avg_fps`</td><td>지속 처리 성능</td></tr>
+            <tr><td>Latency</td><td>`avg/max/p95 parser latency`</td><td>packet decode 안정성</td></tr>
+            <tr><td>Latency</td><td>`avg/max/p95 pipeline latency`</td><td>end-to-end responsiveness</td></tr>
+            <tr><td>Continuity</td><td>`parse_failures`, `resync_events`, `dropped_frames_estimate`</td><td>실시간 신뢰성</td></tr>
+            <tr><td>Utilization</td><td>`cpu_percent`, `peak_rss_mb`</td><td>host 부하 근거</td></tr>
+            <tr><td>Embedded Fit</td><td>`post_init_alloc_count`, `heap_peak_bytes`</td><td>양산형 설계 적합성</td></tr>
+          </tbody>
+        </table>
+        <div class="subgrid">
+          <div class="panel">
+            <h4>추천 Before / After 표 항목</h4>
+            <ul>
+              <li>avg parser latency</li>
+              <li>max parser latency</li>
+              <li>p95 pipeline latency</li>
+              <li>avg FPS</li>
+              <li>dropped / parse fail / resync</li>
+              <li>CPU % / peak memory</li>
+            </ul>
+          </div>
+          <div class="panel">
+            <h4>다음 코드 변경 추천</h4>
+            <ul>
+              <li>`max_parser_latency_ms`, `max_pipeline_latency_ms` 추가</li>
+              <li>`p95_parser_latency_ms`, `p95_pipeline_latency_ms` 추가</li>
+              <li>CPU / RSS sampling 훅 추가</li>
+            </ul>
+          </div>
+        </div>
+        <div class="footer-links"><a href="#top">위로</a><a href="./req_performance_benchmark.html" class="top-link">상세 페이지 보기</a></div>
+      </div>
+    </section>
+
+    <section class="req-section" id="req-if">
+      <div class="req-header">
+        <div class="req-title-row">
+          <span class="status partial">Partial</span>
+          <h3>REQ-INTERFACE-CONTRACT</h3>
+        </div>
+        <p>실무에서는 알고리즘보다 입출력 계약과 안전한 실패 동작이 더 중요할 때가 많습니다. 이 섹션은 radar input, tracking output, health status, control packet 계약을 정리합니다.</p>
+      </div>
+      <div class="req-body">
+        <div class="meta-grid">
+          <div class="meta"><strong>Current Strength</strong><span>12-byte fixed packet + CRC8</span></div>
+          <div class="meta"><strong>Main Gap</strong><span>EMPTY_SCENE vs SENSOR_UNHEALTHY 분리 부족</span></div>
+          <div class="meta"><strong>Current Data Contract</strong><span>frame / cluster / track / control output 설명 존재</span></div>
+          <div class="meta"><strong>Next Step</strong><span>health bitfield와 tracking state 확장</span></div>
+        </div>
+        <table>
+          <thead><tr><th>Contract</th><th>Required Fields</th><th>Current State</th></tr></thead>
+          <tbody>
+            <tr><td>RadarInputFrame</td><td>magic word, packet bytes, frame number, num obj, TLV count, x/y/z/v/range/snr/noise</td><td>Partial</td></tr>
+            <tr><td>TrackingOutput</td><td>track_id, x/y/z, vx/vy, confidence, state, age_frames, missed_count</td><td>Partial</td></tr>
+            <tr><td>HealthStatus</td><td>EMPTY_SCENE_VALID, SENSOR_UNHEALTHY, STALE_DATA, PARSER_DEGRADED, DROPPED_FRAME_HIGH, OVERRUN</td><td>Planned</td></tr>
+            <tr><td>ControlPacket</td><td>header, sequence, command, speed ratio, event, flags, zone distance, closing speed, crc8</td><td>Implemented / needs versioning</td></tr>
+          </tbody>
+        </table>
+        <div class="subgrid">
+          <div class="panel">
+            <h4>가장 중요한 정책 분리</h4>
+            <ul>
+              <li><strong>EMPTY_SCENE_VALID</strong>: 사람이 없는 정상 장면</li>
+              <li><strong>SENSOR_UNHEALTHY</strong>: 레이더를 신뢰할 수 없는 상태</li>
+              <li>이 둘은 같은 의미가 아니며, 동시에 true가 되면 안 됨</li>
+            </ul>
+          </div>
+          <div class="panel">
+            <h4>제어 패킷 확장 추천</h4>
+            <ul>
+              <li>packet version 추가</li>
+              <li>health flags bitfield 추가</li>
+              <li>timeout policy 명시</li>
+              <li>reserved bits 확보</li>
+            </ul>
+          </div>
+        </div>
+        <div class="footer-links"><a href="#top">위로</a><a href="./req_interface_contract.html" class="top-link">상세 페이지 보기</a></div>
+      </div>
+    </section>
+
+    <section class="req-section" id="req-safe">
+      <div class="req-header">
+        <div class="req-title-row">
+          <span class="status planned">Planned</span>
+          <h3>REQ-SAFETY-POLICY</h3>
+        </div>
+        <p>stale data, malformed frame, overrun, dropped burst에서 어떻게 fail-safe로 가는지를 명확히 정의한 정책 섹션입니다. 핵심은 unhealthy 상황에서 RESUME을 금지하는 health gate입니다.</p>
+      </div>
+      <div class="req-body">
+        <div class="meta-grid">
+          <div class="meta"><strong>Already Exists</strong><span>timeout stop, emergency stop, parser counters</span></div>
+          <div class="meta"><strong>Main Risk</strong><span>unhealthy와 empty scene이 혼동될 수 있음</span></div>
+          <div class="meta"><strong>Target Policy</strong><span>health bad면 RESUME 금지</span></div>
+          <div class="meta"><strong>Verification</strong><span>fault injection + timeout stop 검증</span></div>
+        </div>
+        <table>
+          <thead><tr><th>Condition</th><th>Detection</th><th>Host Action</th><th>STM32 Action</th><th>Resume Allowed?</th></tr></thead>
+          <tbody>
+            <tr><td>EMPTY_SCENE_VALID</td><td>parser healthy + frame age 정상 + detection 0</td><td>RESUME 허용</td><td>normal heartbeat</td><td>Yes</td></tr>
+            <tr><td>STALE_DATA</td><td>`frame_age_ms > 100`</td><td>ALARM 또는 송신 중단</td><td>timeout stop</td><td>No</td></tr>
+            <tr><td>MALFORMED_FRAME_BURST</td><td>parse fail / resync burst</td><td>ALARM, health degrade</td><td>stop or hold slow</td><td>No</td></tr>
+            <tr><td>OVERRUN</td><td>buffer/queue overrun</td><td>degraded mode, latest-only</td><td>hold safe command</td><td>Prefer No</td></tr>
+            <tr><td>DROPPED_FRAME_HIGH</td><td>recent dropped rate threshold 초과</td><td>SLOW 또는 ALARM</td><td>slow or stop</td><td>Prefer No</td></tr>
+          </tbody>
+        </table>
+        <div class="subgrid">
+          <div class="panel">
+            <h4>추천 Health Gate</h4>
+            <ul>
+              <li>`frame_age_ms > 100`</li>
+              <li>`parse_failures_delta > 0` in short window</li>
+              <li>`resync_rate` threshold 초과</li>
+              <li>`dropped_frame_burst` threshold 초과</li>
+              <li>`buffer_overrun_count > 0` recent window</li>
+            </ul>
+          </div>
+          <div class="panel">
+            <h4>Recovery Rule 예시</h4>
+            <ul>
+              <li>stale recovery: healthy frame 3개 연속 후 clear</li>
+              <li>malformed burst recovery: cooldown window 후 clear</li>
+              <li>dropped recovery: recent window 정상화 후 clear</li>
+              <li>overrun recovery: utilization 안정화 후 clear</li>
+            </ul>
+          </div>
+        </div>
+        <div class="footer-links"><a href="#top">위로</a><a href="./req_safety_policy.html" class="top-link">상세 페이지 보기</a></div>
+      </div>
+    </section>
+  </div>
+</body>
+</html>
