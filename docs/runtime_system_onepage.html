@@ -1,0 +1,1569 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Radar Tracking System One Page</title>
+  <style>
+    :root {
+      --bg: #f7f5ef;
+      --paper: #fffdf8;
+      --ink: #17212b;
+      --muted: #5d6b77;
+      --line: #d9d0c3;
+      --accent: #b85c38;
+      --accent-soft: #f6e0d4;
+      --accent-2: #2f6f5e;
+      --accent-2-soft: #dceee8;
+      --accent-3: #345995;
+      --accent-3-soft: #dbe7f8;
+      --warn: #aa2e25;
+      --warn-soft: #fae0dd;
+      --shadow: 0 18px 40px rgba(23, 33, 43, 0.08);
+      --radius: 22px;
+    }
+
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body {
+      margin: 0;
+      font-family: "Segoe UI", "Pretendard", "Noto Sans KR", sans-serif;
+      color: var(--ink);
+      background:
+        radial-gradient(circle at top left, rgba(184,92,56,0.14), transparent 32%),
+        radial-gradient(circle at top right, rgba(47,111,94,0.13), transparent 28%),
+        linear-gradient(180deg, #f8f5ee 0%, #f4f0e7 100%);
+      line-height: 1.55;
+    }
+
+    a { color: var(--accent-3); }
+
+    .page {
+      width: min(1320px, calc(100vw - 32px));
+      margin: 0 auto;
+      padding: 28px 0 80px;
+    }
+
+    .hero {
+      background: linear-gradient(140deg, rgba(184,92,56,0.95), rgba(52,89,149,0.92));
+      color: #fff;
+      border-radius: 28px;
+      padding: 34px 34px 28px;
+      box-shadow: var(--shadow);
+      position: relative;
+      overflow: hidden;
+    }
+
+    .hero::after {
+      content: "";
+      position: absolute;
+      inset: auto -40px -80px auto;
+      width: 260px;
+      height: 260px;
+      border-radius: 999px;
+      background: rgba(255,255,255,0.11);
+      filter: blur(2px);
+    }
+
+    .eyebrow {
+      display: inline-block;
+      padding: 6px 12px;
+      border-radius: 999px;
+      background: rgba(255,255,255,0.14);
+      font-size: 13px;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      margin-bottom: 14px;
+    }
+
+    h1 {
+      margin: 0 0 10px;
+      font-size: clamp(32px, 5vw, 54px);
+      line-height: 1.04;
+      letter-spacing: -0.03em;
+    }
+
+    .hero p {
+      margin: 0;
+      max-width: 920px;
+      font-size: 17px;
+      color: rgba(255,255,255,0.92);
+    }
+
+    .hero-grid {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 14px;
+      margin-top: 24px;
+    }
+
+    .hero-stat {
+      background: rgba(255,255,255,0.12);
+      border: 1px solid rgba(255,255,255,0.14);
+      border-radius: 18px;
+      padding: 14px 16px;
+      backdrop-filter: blur(4px);
+    }
+
+    .hero-stat strong {
+      display: block;
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      opacity: 0.75;
+      margin-bottom: 8px;
+    }
+
+    .hero-stat span {
+      display: block;
+      font-size: 15px;
+      line-height: 1.45;
+    }
+
+    .topnav {
+      position: sticky;
+      top: 0;
+      z-index: 10;
+      margin: 16px 0 22px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      padding: 14px;
+      border-radius: 20px;
+      background: rgba(255,253,248,0.86);
+      border: 1px solid rgba(217,208,195,0.8);
+      backdrop-filter: blur(10px);
+      box-shadow: 0 12px 28px rgba(23, 33, 43, 0.05);
+    }
+
+    .topnav a {
+      text-decoration: none;
+      font-size: 14px;
+      color: var(--ink);
+      background: #fff;
+      padding: 8px 12px;
+      border-radius: 999px;
+      border: 1px solid var(--line);
+    }
+
+    .section {
+      margin-top: 22px;
+      background: var(--paper);
+      border: 1px solid rgba(217,208,195,0.75);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      padding: 28px;
+    }
+
+    .section h2 {
+      margin: 0 0 12px;
+      font-size: 28px;
+      letter-spacing: -0.03em;
+    }
+
+    .section h3 {
+      margin: 0 0 10px;
+      font-size: 18px;
+      letter-spacing: -0.02em;
+    }
+
+    .section-intro {
+      margin: 0 0 22px;
+      color: var(--muted);
+      max-width: 980px;
+    }
+
+    .flow {
+      display: grid;
+      grid-template-columns: repeat(7, minmax(0, 1fr));
+      gap: 12px;
+      align-items: stretch;
+    }
+
+    .flow-card {
+      position: relative;
+      background: linear-gradient(180deg, #fff, #fbf8f2);
+      border: 1px solid var(--line);
+      border-radius: 20px;
+      padding: 16px;
+      min-height: 210px;
+    }
+
+    .flow-card:not(:last-child)::after {
+      content: "→";
+      position: absolute;
+      right: -11px;
+      top: calc(50% - 12px);
+      width: 24px;
+      height: 24px;
+      border-radius: 999px;
+      display: grid;
+      place-items: center;
+      background: var(--accent);
+      color: #fff;
+      font-weight: 700;
+      box-shadow: 0 8px 18px rgba(184,92,56,0.28);
+    }
+
+    .step-no {
+      display: inline-block;
+      padding: 5px 9px;
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      border-radius: 999px;
+      background: var(--accent-soft);
+      color: var(--accent);
+      margin-bottom: 10px;
+      text-transform: uppercase;
+    }
+
+    .mini {
+      margin: 0 0 8px;
+      font-size: 13px;
+      color: var(--muted);
+    }
+
+    .codepath {
+      margin: 8px 0 12px;
+      font-family: Consolas, "Courier New", monospace;
+      font-size: 12px;
+      color: var(--accent-3);
+      word-break: break-word;
+    }
+
+    .io {
+      margin-top: 10px;
+      padding-top: 10px;
+      border-top: 1px dashed var(--line);
+      font-size: 13px;
+      color: var(--muted);
+    }
+
+    .grid-2,
+    .grid-3,
+    .grid-4 {
+      display: grid;
+      gap: 16px;
+    }
+
+    .grid-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .grid-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .grid-4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+
+    .card {
+      background: linear-gradient(180deg, #fff, #fcfaf5);
+      border: 1px solid var(--line);
+      border-radius: 20px;
+      padding: 18px;
+    }
+
+    .tag {
+      display: inline-block;
+      margin: 0 6px 8px 0;
+      padding: 5px 10px;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      background: var(--accent-2-soft);
+      color: var(--accent-2);
+    }
+
+    .tag.warn {
+      background: var(--warn-soft);
+      color: var(--warn);
+    }
+
+    .tag.blue {
+      background: var(--accent-3-soft);
+      color: var(--accent-3);
+    }
+
+    ul.clean {
+      margin: 10px 0 0;
+      padding-left: 18px;
+    }
+
+    ul.clean li {
+      margin: 7px 0;
+    }
+
+    .pipeline-table {
+      width: 100%;
+      border-collapse: collapse;
+      overflow: hidden;
+      border-radius: 16px;
+      border: 1px solid var(--line);
+      background: #fff;
+    }
+
+    .pipeline-table th,
+    .pipeline-table td {
+      padding: 13px 14px;
+      text-align: left;
+      border-bottom: 1px solid rgba(217,208,195,0.65);
+      vertical-align: top;
+      font-size: 14px;
+    }
+
+    .pipeline-table th {
+      background: #f7f0e7;
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--muted);
+    }
+
+    .lane-grid {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 88px minmax(0, 1.35fr);
+      gap: 16px;
+      align-items: stretch;
+    }
+
+    .lane {
+      border: 1px solid var(--line);
+      border-radius: 22px;
+      padding: 18px;
+      background: linear-gradient(180deg, #fff, #fcfaf5);
+    }
+
+    .lane.sensor {
+      background: linear-gradient(180deg, #fff8f4, #fffdf9);
+      border-color: #e8c7b6;
+    }
+
+    .lane.host {
+      background: linear-gradient(180deg, #f7fbff, #fffefb);
+      border-color: #c9d7ee;
+    }
+
+    .lane-step {
+      padding: 12px 0;
+      border-top: 1px dashed rgba(217,208,195,0.9);
+    }
+
+    .lane-step:first-of-type {
+      border-top: none;
+      padding-top: 0;
+    }
+
+    .lane-step strong {
+      display: block;
+      margin-bottom: 4px;
+      font-size: 14px;
+    }
+
+    .bridge {
+      display: grid;
+      place-items: center;
+      color: var(--accent);
+      font-weight: 800;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+      text-align: center;
+    }
+
+    .bridge .bubble {
+      width: 76px;
+      height: 76px;
+      border-radius: 999px;
+      display: grid;
+      place-items: center;
+      background: radial-gradient(circle at 30% 30%, #fff, #f4d3c6);
+      border: 2px solid #dfb29d;
+      box-shadow: 0 12px 24px rgba(184,92,56,0.16);
+      font-size: 12px;
+      line-height: 1.25;
+    }
+
+    .symptom-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 14px;
+      margin-top: 18px;
+    }
+
+    .symptom-item {
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      padding: 16px;
+      background: linear-gradient(180deg, #fff, #fdfbf7);
+    }
+
+    .subtle-title {
+      margin: 0 0 8px;
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--muted);
+    }
+
+    .function-pills {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin: 10px 0 12px;
+    }
+
+    .function-pills code {
+      display: inline-block;
+      padding: 7px 10px;
+      border-radius: 999px;
+      background: #f2eee7;
+      border: 1px solid var(--line);
+      font-size: 12px;
+      color: var(--ink);
+    }
+
+    .checklist {
+      margin: 0;
+      padding-left: 18px;
+      font-size: 14px;
+    }
+
+    .checklist li {
+      margin: 7px 0;
+    }
+
+    .read-order {
+      display: grid;
+      grid-template-columns: repeat(5, minmax(0, 1fr));
+      gap: 12px;
+      margin-top: 18px;
+    }
+
+    .read-card {
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      padding: 14px;
+      background: linear-gradient(180deg, #fff, #fbf8f3);
+    }
+
+    .read-card .step-no {
+      margin-bottom: 8px;
+    }
+
+    .issue {
+      border-left: 6px solid var(--warn);
+      background: linear-gradient(180deg, #fff, #fff8f7);
+    }
+
+    .solution {
+      border-left: 6px solid var(--accent-2);
+      background: linear-gradient(180deg, #fff, #f8fcfb);
+    }
+
+    .callout {
+      background: linear-gradient(135deg, var(--accent-3-soft), rgba(255,255,255,0.8));
+      border: 1px solid #bfd0ef;
+      border-radius: 20px;
+      padding: 18px 20px;
+      margin-top: 18px;
+    }
+
+    .cmd {
+      margin-top: 10px;
+      background: #201a16;
+      color: #f8eee9;
+      padding: 14px 16px;
+      border-radius: 16px;
+      font-family: Consolas, "Courier New", monospace;
+      font-size: 13px;
+      overflow-x: auto;
+    }
+
+    .actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-top: 14px;
+    }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 10px 14px;
+      border-radius: 999px;
+      border: 1px solid #c7d4ea;
+      background: linear-gradient(180deg, #eef5ff, #ffffff);
+      color: var(--accent-3);
+      text-decoration: none;
+      font-size: 13px;
+      font-weight: 700;
+      letter-spacing: 0.01em;
+    }
+
+    .btn.secondary {
+      border-color: #e0c3b6;
+      background: linear-gradient(180deg, #fff4ee, #ffffff);
+      color: var(--accent);
+    }
+
+    .accordion {
+      margin-top: 14px;
+      border: 1px solid var(--line);
+      border-radius: 18px;
+      background: linear-gradient(180deg, #fff, #fcfaf5);
+      overflow: hidden;
+    }
+
+    .accordion summary {
+      cursor: pointer;
+      list-style: none;
+      padding: 14px 16px;
+      font-weight: 700;
+      font-size: 14px;
+      background: #f7f0e7;
+    }
+
+    .accordion summary::-webkit-details-marker {
+      display: none;
+    }
+
+    .accordion-body {
+      padding: 16px;
+    }
+
+    .snippet {
+      margin: 12px 0 0;
+      padding: 14px 16px;
+      border-radius: 14px;
+      background: #191817;
+      color: #f4eee8;
+      font-family: Consolas, "Courier New", monospace;
+      font-size: 12px;
+      line-height: 1.55;
+      overflow-x: auto;
+      white-space: pre-wrap;
+    }
+
+    .footer-note {
+      margin-top: 28px;
+      color: var(--muted);
+      font-size: 13px;
+      text-align: center;
+    }
+
+    @media (max-width: 1120px) {
+      .flow { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .flow-card:not(:last-child)::after { display: none; }
+      .grid-4 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .lane-grid,
+      .read-order { grid-template-columns: 1fr; }
+      .symptom-grid { grid-template-columns: 1fr; }
+    }
+
+    @media (max-width: 820px) {
+      .hero-grid,
+      .grid-2,
+      .grid-3,
+      .grid-4,
+      .flow { grid-template-columns: 1fr; }
+      .lane-grid,
+      .symptom-grid,
+      .read-order { grid-template-columns: 1fr; }
+      .section { padding: 22px; }
+      .topnav { position: static; }
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <section class="hero">
+      <span class="eyebrow">One Page Architecture</span>
+      <h1>Radar Tracking System</h1>
+      <p>
+        이 페이지는 현재 시스템이 어떻게 동작하는지, 각 코드 파일이 어떤 역할을 하는지, 어떤 데이터가 다음 단계로 넘어가는지,
+        지금 남아 있는 핵심 문제와 다음 해결 순서를 한 번에 이해할 수 있게 정리한 단일 문서다.
+      </p>
+      <div class="hero-grid">
+        <div class="hero-stat">
+          <strong>Core Runtime</strong>
+          <span><code>src/parser/runtime_pipeline.py</code>가 실제 메인 파이프라인을 담당한다.</span>
+        </div>
+        <div class="hero-stat">
+          <strong>Viewer</strong>
+          <span>viewer는 runtime 결과를 그대로 받아 최신 snapshot만 렌더링한다.</span>
+        </div>
+        <div class="hero-stat">
+          <strong>Auto Reports</strong>
+          <span>run 종료 시 experiment report와 performance log가 자동 갱신된다.</span>
+        </div>
+        <div class="hero-stat">
+          <strong>Current Pain</strong>
+          <span>range gate, 사람 분할, zero-track streak, UART continuity가 핵심 이슈다.</span>
+        </div>
+      </div>
+    </section>
+
+    <nav class="topnav">
+      <a href="#flow">전체 흐름</a>
+      <a href="#visual">시각화 이해</a>
+      <a href="#roles">코드 역할</a>
+      <a href="#explorer">코드 탐색</a>
+      <a href="#deepdive">핵심 함수/변수</a>
+      <a href="#variables">핵심 변수/구조체</a>
+      <a href="#handoff">전달 정보</a>
+      <a href="#issues">현재 문제</a>
+      <a href="#next">다음 해결</a>
+      <a href="#logging">자동 기록 영향</a>
+      <a href="#commands">추천 명령</a>
+    </nav>
+
+    <section class="section" id="flow">
+      <h2>1. End-to-End Flow</h2>
+      <p class="section-intro">
+        시스템은 TLV packet을 읽고, point를 world 좌표로 보정한 뒤, 필터링과 DBSCAN, Kalman tracking,
+        control 판단, logging/reporting, viewer 렌더링으로 이어진다. viewer는 계산을 따로 하지 않고 runtime 결과를 그대로 본다.
+      </p>
+      <div class="flow">
+        <article class="flow-card">
+          <span class="step-no">Step 1</span>
+          <h3>UART Read</h3>
+          <p class="mini">레이더 CLI/Data 포트에서 바이트 스트림을 읽는다.</p>
+          <div class="codepath">src/parser/runtime_pipeline.py / MMWaveSerialReader</div>
+          <div class="io"><strong>Out:</strong> raw byte buffer</div>
+        </article>
+        <article class="flow-card">
+          <span class="step-no">Step 2</span>
+          <h3>TLV Parse</h3>
+          <p class="mini">magic word를 찾고 TLV packet을 해석해 frame 단위 구조로 만든다.</p>
+          <div class="codepath">src/parser/tlv_packet_parser.py</div>
+          <div class="io"><strong>Out:</strong> <code>ParsedFrame(frame_number, num_obj, points, packet_bytes, ...)</code></div>
+        </article>
+        <article class="flow-card">
+          <span class="step-no">Step 3</span>
+          <h3>World Transform</h3>
+          <p class="mini">sensor yaw/pitch/height를 이용해 sensor frame point를 world frame으로 바꾼다.</p>
+          <div class="codepath">src/parser/runtime_pipeline.py / transform_points_to_world()</div>
+          <div class="io"><strong>Out:</strong> world-frame point list with <code>x, y, z, ground_range</code></div>
+        </article>
+        <article class="flow-card">
+          <span class="step-no">Step 4</span>
+          <h3>Preprocess</h3>
+          <p class="mini">SNR, noise, range, ROI, keepout, static clutter filter를 적용한다.</p>
+          <div class="codepath">src/filter/noise_filter.py / preprocess_points()</div>
+          <div class="io"><strong>Out:</strong> filtered points + <code>FilterStats</code></div>
+        </article>
+        <article class="flow-card">
+          <span class="step-no">Step 5</span>
+          <h3>DBSCAN</h3>
+          <p class="mini">filtered point를 cluster로 묶고 centroid/confidence를 계산한다.</p>
+          <div class="codepath">src/cluster/dbscan_cluster.py / cluster_points()</div>
+          <div class="io"><strong>Out:</strong> cluster list <code>{x,y,z,v,size,confidence,...}</code></div>
+        </article>
+        <article class="flow-card">
+          <span class="step-no">Step 6</span>
+          <h3>Tracking</h3>
+          <p class="mini">cluster를 track로 이어서 위치/속도 상태를 유지한다.</p>
+          <div class="codepath">src/tracking/kalman_tracker.py / MultiObjectKalmanTracker</div>
+          <div class="io"><strong>Out:</strong> <code>TrackOutput(track_id,x,y,vx,vy,...)</code></div>
+        </article>
+        <article class="flow-card">
+          <span class="step-no">Step 7</span>
+          <h3>Control / Reports / Viewer</h3>
+          <p class="mini">belt control 판단, CSV/log/report 생성, live viewer 렌더링으로 나뉜다.</p>
+          <div class="codepath">src/control, src/reporting, src/visualization</div>
+          <div class="io"><strong>Out:</strong> decision, run artifacts, live UI</div>
+        </article>
+      </div>
+    </section>
+
+    <section class="section" id="visual">
+      <h2>2. Visual Reading Guide</h2>
+      <p class="section-intro">
+        이 시스템은 크게 두 덩어리로 보면 이해가 쉽다. 센서 내부 firmware/DSP 쪽에서 point cloud를 만들고,
+        Python host 쪽에서는 그 point cloud를 해석하고 정리하고 추적하고 보여준다.
+      </p>
+      <div class="lane-grid">
+        <article class="lane sensor">
+          <h3>Sensor Side: mmWave Demo Firmware</h3>
+          <div class="lane-step">
+            <strong>1. Chirp / Frame 설정</strong>
+            <div class="mini"><code>profileCfg</code>, <code>frameCfg</code>, <code>channelCfg</code>로 해상도와 frame rate의 큰 틀을 정한다.</div>
+          </div>
+          <div class="lane-step">
+            <strong>2. CFAR / FOV</strong>
+            <div class="mini"><code>cfarCfg</code>, <code>cfarFovCfg</code>로 detection candidate와 거리/속도 범위를 정리한다.</div>
+          </div>
+          <div class="lane-step">
+            <strong>3. Beamforming / AoA</strong>
+            <div class="mini"><code>multiObjBeamForming</code>, <code>aoaFovCfg</code>로 angle 해석과 다중 반사 분리를 수행한다.</div>
+          </div>
+          <div class="lane-step">
+            <strong>4. TLV Output</strong>
+            <div class="mini"><code>guiMonitor</code>로 point cloud와 side info를 UART TLV로 내보낸다.</div>
+          </div>
+        </article>
+        <div class="bridge">
+          <div class="bubble">UART<br />TLV</div>
+        </div>
+        <article class="lane host">
+          <h3>Host Side: Python Runtime</h3>
+          <div class="lane-step">
+            <strong>1. Parse</strong>
+            <div class="mini"><code>MMWaveSerialReader.read_frame()</code>와 <code>parser_one_mmw_demo_output_packet()</code>가 packet을 frame으로 해석한다.</div>
+          </div>
+          <div class="lane-step">
+            <strong>2. World Transform</strong>
+            <div class="mini"><code>sensor_yaw_deg</code>, <code>sensor_pitch_deg</code>, <code>sensor_height_m</code>로 설치 각도 보정을 한다.</div>
+          </div>
+          <div class="lane-step">
+            <strong>3. Preprocess / DBSCAN / Tracking</strong>
+            <div class="mini">필터링으로 point를 줄이고, DBSCAN으로 object 후보를 만들고, Kalman tracker로 시간 연속성을 만든다.</div>
+          </div>
+          <div class="lane-step">
+            <strong>4. Viewer / Control / Reports</strong>
+            <div class="mini">같은 runtime 결과를 viewer, belt control, CSV/markdown report에 공유한다.</div>
+          </div>
+        </article>
+      </div>
+
+      <div class="callout">
+        <strong>꼭 기억할 한 줄</strong><br />
+        이 프로젝트는 raw ADC에서 시작하지 않는다. <strong>센서가 만든 detected point cloud부터</strong> Python 파이프라인이 시작된다.
+        그래서 beamforming/CFAR 자체를 Python에서 다시 하는 것이 아니라, 그 결과를 설치 보정/필터/클러스터/트래킹으로 다듬는 구조다.
+      </div>
+
+      <div class="symptom-grid">
+        <article class="symptom-item">
+          <p class="subtle-title">증상에서 코드 찾기</p>
+          <h3>점 자체가 이상하거나 parse fail이 많다</h3>
+          <p class="mini"><code>config/profile_3d.cfg</code> → <code>MMWaveSerialReader.read_frame()</code> → <code>parser_one_mmw_demo_output_packet()</code> 순서로 본다.</p>
+        </article>
+        <article class="symptom-item">
+          <p class="subtle-title">증상에서 코드 찾기</p>
+          <h3>앞뒤로 걸었는데 대각선처럼 보인다</h3>
+          <p class="mini"><code>transform_points_to_world()</code>와 <code>sensor_yaw/pitch/height</code>, 그리고 viewer top-down 표시를 같이 본다.</p>
+        </article>
+        <article class="symptom-item">
+          <p class="subtle-title">증상에서 코드 찾기</p>
+          <h3>한 사람을 여러 track으로 본다</h3>
+          <p class="mini"><code>preprocess_points()</code> → <code>cluster_points()</code> → <code>MultiObjectKalmanTracker.update()</code> 순서로 본다.</p>
+        </article>
+        <article class="symptom-item">
+          <p class="subtle-title">증상에서 코드 찾기</p>
+          <h3>화면이 늦고 끊겨 보인다</h3>
+          <p class="mini"><code>run_viewer()</code>, <code>_runtime_worker()</code>, <code>draw_snapshot()</code>, 그리고 <code>disable_text_log</code>/<code>max_vis_fps</code>를 함께 본다.</p>
+        </article>
+      </div>
+    </section>
+
+    <section class="section" id="roles">
+      <h2>3. Code Roles</h2>
+      <p class="section-intro">
+        아래 카드만 보면 어떤 파일이 시스템에서 무슨 책임을 갖는지 빠르게 파악할 수 있다.
+      </p>
+      <div class="grid-3">
+        <article class="card">
+          <span class="tag blue">Entrypoint</span>
+          <h3><code>src/parser/tlv_parse_runner.py</code></h3>
+          <p>사용자가 직접 실행하는 기본 명령 진입점이다. 실제 구현은 runtime pipeline으로 넘기고, 기존 import 호환도 유지한다.</p>
+        </article>
+        <article class="card">
+          <span class="tag">Runtime Core</span>
+          <h3><code>src/parser/runtime_pipeline.py</code></h3>
+          <p>실제 메인 루프. serial read, frame processing, logging, control, experiment report, performance log까지 모두 묶는다.</p>
+        </article>
+        <article class="card">
+          <span class="tag blue">Parser</span>
+          <h3><code>src/parser/tlv_packet_parser.py</code></h3>
+          <p>TLV packet을 해석해 dict-of-arrays 형태의 point 데이터를 뽑아낸다.</p>
+        </article>
+        <article class="card">
+          <span class="tag">Filter</span>
+          <h3><code>src/filter/noise_filter.py</code></h3>
+          <p>point quality와 geometry 기반 전처리를 수행하고, 어떤 기준으로 얼마나 제거됐는지 <code>FilterStats</code>로 남긴다.</p>
+        </article>
+        <article class="card">
+          <span class="tag">Cluster</span>
+          <h3><code>src/cluster/dbscan_cluster.py</code></h3>
+          <p>point를 object 후보 단위로 묶는다. 현재 사람 분할 이슈와 가장 직접적으로 연결되는 모듈이다.</p>
+        </article>
+        <article class="card">
+          <span class="tag">Tracker</span>
+          <h3><code>src/tracking/kalman_tracker.py</code></h3>
+          <p>cluster centroid를 track로 이어서 상태를 예측/갱신한다. 현재는 greedy nearest-first association을 사용한다.</p>
+        </article>
+        <article class="card">
+          <span class="tag">Control</span>
+          <h3><code>src/control/proximity_speed_control.py</code></h3>
+          <p>track 또는 cluster를 zone과 belt axis 기준으로 해석해서 <code>RESUME / SLOW / STOP</code>을 결정한다.</p>
+        </article>
+        <article class="card">
+          <span class="tag">MCU TX</span>
+          <h3><code>src/communication/control_protocol.py</code></h3>
+          <p>Python host에서 STM32로 보낼 제어 packet을 인코딩하고 serial heartbeat 포함 송신을 관리한다.</p>
+        </article>
+        <article class="card">
+          <span class="tag blue">Viewer</span>
+          <h3><code>src/visualization/live_rail_viewer.py</code></h3>
+          <p>runtime worker가 만든 최신 snapshot만 받아 시각화한다. 계산을 따로 하지 않고 draw만 담당한다.</p>
+        </article>
+        <article class="card">
+          <span class="tag blue">Params</span>
+          <h3><code>src/runtime_params.py</code> / <code>config/runtime_params.json</code></h3>
+          <p>공용 기본값과 JSON override를 담당한다. runner와 viewer가 같은 기본값을 공유한다.</p>
+        </article>
+        <article class="card">
+          <span class="tag">Experiment Report</span>
+          <h3><code>src/reporting/runtime_experiment_report.py</code></h3>
+          <p>run 종료 시 문제/가설/수정/검증 템플릿이 포함된 run별 markdown report를 생성한다.</p>
+        </article>
+        <article class="card">
+          <span class="tag">Performance Log</span>
+          <h3><code>src/reporting/performance_log_report.py</code></h3>
+          <p><code>run_summary.csv</code>와 frame CSV를 읽어 최신 상태와 이전 run 대비 변화가 보이는 자동 성능 로그를 생성한다.</p>
+        </article>
+      </div>
+    </section>
+
+    <section class="section" id="deepdive">
+      <h2>4. Important Functions, Variables, and Reading Order</h2>
+      <p class="section-intro">
+        아래 내용은 “이 파일에서 무엇부터 봐야 하는지”를 바로 알려주는 코드 읽기 지도다.
+        함수 이름은 실제 코드와 맞췄고, 변수/구조체는 지금 시스템을 이해할 때 꼭 잡아야 하는 것만 추렸다.
+      </p>
+      <div class="grid-2">
+        <article class="card">
+          <span class="tag">Runtime Core</span>
+          <h3><code>src/parser/runtime_pipeline.py</code></h3>
+          <p class="subtle-title">먼저 볼 함수</p>
+          <div class="function-pills">
+            <code>run_realtime()</code>
+            <code>build_runtime_processing_context()</code>
+            <code>process_runtime_frame()</code>
+            <code>transform_points_to_world()</code>
+            <code>MMWaveSerialReader.read_frame()</code>
+          </div>
+          <p class="subtle-title">중요 구조체 / 변수</p>
+          <ul class="checklist">
+            <li><code>ParsedFrame</code>: parser가 넘기는 1-frame 기본 계약</li>
+            <li><code>RuntimeProcessingContext</code>: filter / DBSCAN / tracker / sensor 보정 설정 묶음</li>
+            <li><code>RuntimeFrameProcessingResult</code>: filtered points, clusters, tracks, primary target, stats</li>
+            <li><code>ReaderStats</code>: <code>parse_failures</code>, <code>resync_events</code>, <code>dropped_frames_estimate</code></li>
+            <li><code>RUNNER_PARAM_DEFAULT_KEYS</code>: runner가 실제로 쓰는 공용 파라미터 키 목록</li>
+          </ul>
+        </article>
+        <article class="card">
+          <span class="tag blue">Viewer</span>
+          <h3><code>src/visualization/live_rail_viewer.py</code></h3>
+          <p class="subtle-title">먼저 볼 함수</p>
+          <div class="function-pills">
+            <code>run_viewer()</code>
+            <code>_runtime_worker()</code>
+            <code>build_viewer_snapshot()</code>
+            <code>LiveRuntimeFrameRenderer.draw_snapshot()</code>
+            <code>add_status_overlay()</code>
+          </div>
+          <p class="subtle-title">중요 구조체 / 변수</p>
+          <ul class="checklist">
+            <li><code>ViewerFrameSnapshot</code>: viewer가 실제로 그리는 최신 frame state</li>
+            <li><code>LatestRuntimeFrameBuffer</code>: runtime worker와 draw 사이 최신 snapshot 공유</li>
+            <li><code>VIEWER_PARAM_DEFAULT_KEYS</code>: viewer가 공용 params에서 읽는 키 목록</li>
+            <li><code>TRACK_COLOR_CYCLE</code>: track별 고정 색상 루프</li>
+          </ul>
+        </article>
+        <article class="card">
+          <span class="tag blue">Parser</span>
+          <h3><code>src/parser/tlv_packet_parser.py</code></h3>
+          <p class="subtle-title">먼저 볼 함수</p>
+          <div class="function-pills">
+            <code>parser_one_mmw_demo_output_packet()</code>
+            <code>parser_helper()</code>
+            <code>_parse_detected_points_tlv()</code>
+            <code>_parse_snr_noise_tlv()</code>
+          </div>
+          <p class="subtle-title">중요 구조체 / 변수</p>
+          <ul class="checklist">
+            <li><code>MAGIC_WORD</code>: packet 시작점 탐지 기준</li>
+            <li><code>HEADER_NUM_BYTES</code>: header 길이</li>
+            <li><code>detected_x/y/z/v/range/snr/noise</code>: 이후 모든 단계의 raw 입력</li>
+          </ul>
+        </article>
+        <article class="card">
+          <span class="tag">Filter</span>
+          <h3><code>src/filter/noise_filter.py</code></h3>
+          <p class="subtle-title">먼저 볼 함수</p>
+          <div class="function-pills">
+            <code>points_dict_to_list()</code>
+            <code>preprocess_points()</code>
+            <code>_find_matching_box()</code>
+            <code>_summarize_points()</code>
+          </div>
+          <p class="subtle-title">중요 구조체 / 변수</p>
+          <ul class="checklist">
+            <li><code>AxisAlignedBox</code>: ROI / keepout / clutter box 표현</li>
+            <li><code>FilterStats</code>: <code>removed_range</code>, <code>removed_axis_roi</code>, <code>removed_keepout</code>, <code>removed_static_clutter</code></li>
+            <li><code>sample_points</code>, <code>sample_source</code>: 왜 걸러졌는지 빠르게 보는 샘플</li>
+          </ul>
+        </article>
+        <article class="card">
+          <span class="tag">Cluster</span>
+          <h3><code>src/cluster/dbscan_cluster.py</code></h3>
+          <p class="subtle-title">먼저 볼 함수</p>
+          <div class="function-pills">
+            <code>cluster_points()</code>
+            <code>normalize_adaptive_eps_bands()</code>
+            <code>_build_feature_matrix()</code>
+            <code>_merge_adaptive_boundary_clusters()</code>
+          </div>
+          <p class="subtle-title">중요 구조체 / 변수</p>
+          <ul class="checklist">
+            <li><code>dbscan_eps</code>, <code>dbscan_min_samples</code>: 분할/미검출에 가장 직접적</li>
+            <li><code>use_velocity_feature</code>, <code>dbscan_velocity_weight</code>: 속도 기반 묶기 여부</li>
+            <li><code>confidence</code>, <code>spread_xy</code>, <code>mean_snr</code>: cluster 품질 판단에 사용</li>
+          </ul>
+        </article>
+        <article class="card">
+          <span class="tag">Tracker</span>
+          <h3><code>src/tracking/kalman_tracker.py</code></h3>
+          <p class="subtle-title">먼저 볼 함수</p>
+          <div class="function-pills">
+            <code>MultiObjectKalmanTracker.update()</code>
+            <code>_associate()</code>
+            <code>_predict()</code>
+            <code>_build_kf()</code>
+          </div>
+          <p class="subtle-title">중요 구조체 / 변수</p>
+          <ul class="checklist">
+            <li><code>TrackOutput</code>: viewer/control에 넘어가는 track 기본 형식</li>
+            <li><code>association_gate</code>: track 연결 반경</li>
+            <li><code>max_misses</code>, <code>min_hits</code>, <code>report_miss_tolerance</code>: continuity와 ghost tradeoff</li>
+          </ul>
+        </article>
+        <article class="card">
+          <span class="tag">Control</span>
+          <h3><code>src/control/proximity_speed_control.py</code></h3>
+          <p class="subtle-title">먼저 볼 함수</p>
+          <div class="function-pills">
+            <code>ProximitySpeedController.update()</code>
+            <code>_assess_track()</code>
+            <code>_update_motion_state()</code>
+            <code>_project_to_belt_axis()</code>
+          </div>
+          <p class="subtle-title">중요 구조체 / 변수</p>
+          <ul class="checklist">
+            <li><code>ControlZone</code>, <code>ControlDecision</code></li>
+            <li><code>belt_axis_x/y</code>: belt 진행축 정의</li>
+            <li><code>approach_speed_threshold</code>, <code>stationary_speed_threshold</code>: hysteresis 속도 문턱</li>
+            <li><code>moving_confirm_sec</code>, <code>static_hold_sec</code>, <code>static_disp_threshold</code>: 시간/변위 기반 안정화</li>
+          </ul>
+        </article>
+        <article class="card">
+          <span class="tag blue">Params / Reports</span>
+          <h3><code>src/runtime_params.py</code> / <code>src/reporting/*</code></h3>
+          <p class="subtle-title">먼저 볼 함수</p>
+          <div class="function-pills">
+            <code>resolve_runtime_param_defaults()</code>
+            <code>load_runtime_param_overrides()</code>
+            <code>analyze_frame_csv()</code>
+            <code>render_runtime_experiment_report()</code>
+            <code>render_performance_log()</code>
+          </div>
+          <p class="subtle-title">중요 구조체 / 변수</p>
+          <ul class="checklist">
+            <li><code>GLOBAL_RUNTIME_PARAM_DEFAULTS</code>: 전체 기본값 원본</li>
+            <li><code>DEFAULT_RUNTIME_PARAMS_PATH</code>: 공용 params 파일 위치</li>
+            <li><code>run_summary.csv</code>, frame CSV: 자동 리포트 생성의 입력</li>
+            <li><code>zero_track_frames</code>, <code>longest_zero_track_streak</code>, <code>tracks_ge_2_frames</code>: continuity 지표</li>
+          </ul>
+        </article>
+      </div>
+
+      <div class="callout">
+        <strong>20분만 코드 볼 수 있다면</strong><br />
+        <code>run_realtime()</code> → <code>process_runtime_frame()</code> → <code>preprocess_points()</code> → <code>cluster_points()</code> → <code>MultiObjectKalmanTracker.update()</code> → <code>run_viewer()</code>
+        순서로 보면 현재 시스템의 거의 전부를 이해할 수 있다.
+      </div>
+
+      <div class="read-order">
+        <article class="read-card">
+          <span class="step-no">Read 1</span>
+          <h3><code>run_realtime()</code></h3>
+          <p class="mini">시스템 전체 orchestrator. 가장 먼저 큰 그림을 잡는다.</p>
+        </article>
+        <article class="read-card">
+          <span class="step-no">Read 2</span>
+          <h3><code>process_runtime_frame()</code></h3>
+          <p class="mini">1 frame 안에서 실제 처리가 어떻게 이어지는지 본다.</p>
+        </article>
+        <article class="read-card">
+          <span class="step-no">Read 3</span>
+          <h3><code>preprocess_points()</code></h3>
+          <p class="mini">사람이 왜 사라졌는지 가장 자주 확인하는 지점이다.</p>
+        </article>
+        <article class="read-card">
+          <span class="step-no">Read 4</span>
+          <h3><code>cluster_points()</code> / <code>update()</code></h3>
+          <p class="mini">사람 분할, multi-track, zero-track 원인을 본다.</p>
+        </article>
+        <article class="read-card">
+          <span class="step-no">Read 5</span>
+          <h3><code>run_viewer()</code></h3>
+          <p class="mini">시연 화면이 runtime과 얼마나 같게 보이는지 확인한다.</p>
+        </article>
+      </div>
+    </section>
+
+    <section class="section" id="explorer">
+      <h2>4.5 Interactive Code Explorer</h2>
+      <p class="section-intro">
+        아래 버튼을 누르면 원본 파일을 바로 열 수 있고, 아코디언을 펼치면 이 페이지 안에서 핵심 코드 흐름을 바로 볼 수 있다.
+        브라우저에서 <code>.py</code> 파일은 텍스트 형태로 열린다.
+      </p>
+      <div class="grid-2">
+        <article class="card">
+          <span class="tag">Runtime Core</span>
+          <h3><code>src/parser/runtime_pipeline.py</code></h3>
+          <p>실제 1-frame 처리와 전체 runtime loop를 가장 먼저 이해해야 할 파일이다.</p>
+          <div class="actions">
+            <a class="btn" href="../src/parser/runtime_pipeline.py">파일 열기</a>
+            <a class="btn secondary" href="#explorer-runtime">핵심 코드 보기</a>
+          </div>
+          <details class="accordion" id="explorer-runtime">
+            <summary>핵심 코드 펼쳐보기</summary>
+            <div class="accordion-body">
+              <p class="mini">보는 포인트: <code>RuntimeProcessingContext</code>를 만들고, 1-frame 안에서 transform → filter → cluster → track 순으로 처리한다.</p>
+              <pre class="snippet">def build_runtime_processing_context(...):
+    keepout_boxes = build_keepout_boxes(...)
+    static_clutter_boxes = build_static_clutter_boxes(...)
+    return RuntimeProcessingContext(
+        sensor_yaw_deg=...,
+        sensor_pitch_deg=...,
+        sensor_height_m=...,
+        dbscan_eps=...,
+        dbscan_min_samples=...,
+        ...
+    )
+
+def process_runtime_frame(frame, processing_context, tracker=None, frame_ts=None):
+    raw_points = points_dict_to_list(frame.points, frame.num_obj)
+    raw_points = transform_points_to_world(
+        raw_points,
+        yaw_deg=processing_context.sensor_yaw_deg,
+        pitch_deg=processing_context.sensor_pitch_deg,
+        sensor_height_m=processing_context.sensor_height_m,
+    )
+    filtered_points, filter_stats = preprocess_points(...)
+    clusters = cluster_points(...)
+    tracks = tracker.update(clusters, frame_ts=effective_frame_ts)</pre>
+            </div>
+          </details>
+        </article>
+
+        <article class="card">
+          <span class="tag blue">Viewer</span>
+          <h3><code>src/visualization/live_rail_viewer.py</code></h3>
+          <p>runtime worker와 draw를 분리해서, 최신 snapshot만 화면에 그리는 구조다.</p>
+          <div class="actions">
+            <a class="btn" href="../src/visualization/live_rail_viewer.py">파일 열기</a>
+            <a class="btn secondary" href="#explorer-viewer">핵심 코드 보기</a>
+          </div>
+          <details class="accordion" id="explorer-viewer">
+            <summary>핵심 코드 펼쳐보기</summary>
+            <div class="accordion-body">
+              <p class="mini">보는 포인트: viewer는 계산을 재구현하지 않고, background worker가 돌린 runtime 결과를 snapshot으로 받아 그린다.</p>
+              <pre class="snippet">def _runtime_worker(args, frame_buffer):
+    run_realtime(
+        ...,
+        disable_file_log=True,
+        console_output=False,
+        frame_hook=frame_buffer.push_from_runtime,
+    )
+
+def run_viewer(args):
+    frame_buffer = LatestRuntimeFrameBuffer()
+    renderer = LiveRuntimeFrameRenderer(args)
+    worker = threading.Thread(target=_runtime_worker, ...)
+    worker.start()
+    while True:
+        snapshot = frame_buffer.latest_snapshot()
+        if snapshot is not None:
+            renderer.draw_snapshot(snapshot)
+        plt.pause(0.001)</pre>
+            </div>
+          </details>
+        </article>
+
+        <article class="card">
+          <span class="tag blue">Parser + Filter</span>
+          <h3><code>tlv_packet_parser.py</code> / <code>noise_filter.py</code></h3>
+          <p>점이 이상하거나 사람이 갑자기 사라질 때 가장 먼저 보는 두 파일이다.</p>
+          <div class="actions">
+            <a class="btn" href="../src/parser/tlv_packet_parser.py">parser 파일 열기</a>
+            <a class="btn" href="../src/filter/noise_filter.py">filter 파일 열기</a>
+            <a class="btn secondary" href="#explorer-filter">핵심 코드 보기</a>
+          </div>
+          <details class="accordion" id="explorer-filter">
+            <summary>핵심 코드 펼쳐보기</summary>
+            <div class="accordion-body">
+              <p class="mini">보는 포인트: filter는 제거 순서가 중요하다. 어느 단계에서 사람이 잘렸는지 <code>removed_*</code>로 확인한다.</p>
+              <pre class="snippet">def preprocess_points(...):
+    # 1) SNR threshold
+    # 2) noise upper bound
+    # 3) range gate
+    # 4) axis-aligned include ROI
+    # 5) exclude keepout boxes
+    # 6) low-velocity static clutter boxes with SNR guard
+    for point in point_list:
+        if snr &lt; snr_threshold: ...
+        if max_noise is not None and noise &gt; max_noise: ...
+        if rng &lt; min_range or (max_range is not None and rng &gt; max_range): ...
+        if x/y/z outside ROI: ...
+        if matched_keepout is not None: ...
+        if matched_clutter is not None and velocity &lt; static_v_min: ...
+        filtered.append(point)</pre>
+            </div>
+          </details>
+        </article>
+
+        <article class="card">
+          <span class="tag">Cluster + Tracker</span>
+          <h3><code>dbscan_cluster.py</code> / <code>kalman_tracker.py</code></h3>
+          <p>사람 1명이 여러 track으로 나뉘는 문제와 zero-track continuity를 가장 많이 결정하는 구간이다.</p>
+          <div class="actions">
+            <a class="btn" href="../src/cluster/dbscan_cluster.py">cluster 파일 열기</a>
+            <a class="btn" href="../src/tracking/kalman_tracker.py">tracker 파일 열기</a>
+            <a class="btn secondary" href="#explorer-track">핵심 코드 보기</a>
+          </div>
+          <details class="accordion" id="explorer-track">
+            <summary>핵심 코드 펼쳐보기</summary>
+            <div class="accordion-body">
+              <p class="mini">보는 포인트: tracker는 Hungarian이 아니라 greedy nearest-first association이다. 이게 multi-track과 miss tradeoff에 영향을 준다.</p>
+              <pre class="snippet">def _associate(self, measurements):
+    candidates = []
+    for ti, trk in enumerate(self._tracks):
+        for mi, meas in enumerate(measurements):
+            d = self._distance(trk, meas)
+            if d &lt;= self.association_gate:
+                candidates.append((d, ti, mi))
+    candidates.sort(key=lambda x: x[0])
+    ...
+
+def update(self, measurements, frame_ts=None):
+    self._predict(dt)
+    matched, _, unmatched_meas = self._associate(measurements)
+    ...
+    self._tracks = [t for t in self._tracks if t.misses &lt;= self.max_misses]</pre>
+            </div>
+          </details>
+        </article>
+
+        <article class="card">
+          <span class="tag">Control</span>
+          <h3><code>src/control/proximity_speed_control.py</code></h3>
+          <p>belt 진행축 기준 속도/변위로 <code>RESUME/SLOW/STOP</code>을 결정한다.</p>
+          <div class="actions">
+            <a class="btn" href="../src/control/proximity_speed_control.py">파일 열기</a>
+            <a class="btn secondary" href="#explorer-control">핵심 코드 보기</a>
+          </div>
+          <details class="accordion" id="explorer-control">
+            <summary>핵심 코드 펼쳐보기</summary>
+            <div class="accordion-body">
+              <p class="mini">보는 포인트: belt axis projection과 hysteresis band가 채터링을 줄인다.</p>
+              <pre class="snippet">def _project_to_belt_axis(self, x_value, y_value):
+    return (x_value * self.belt_axis_x) + (y_value * self.belt_axis_y)
+
+def _update_motion_state(self, track_id, belt_speed_mps, belt_position_m, frame_ts):
+    if abs_speed &lt;= self.stationary_speed_threshold:
+        ...
+        if static_duration &gt;= self.static_hold_sec and displacement_ok:
+            memory.motion_state = "STATIC"
+    elif abs_speed &gt;= self.approach_speed_threshold:
+        ...
+        if moving_duration &gt;= self.moving_confirm_sec:
+            memory.motion_state = "MOVING"</pre>
+            </div>
+          </details>
+        </article>
+
+        <article class="card">
+          <span class="tag blue">Params + Reports</span>
+          <h3><code>runtime_params.py</code> / <code>reporting/*.py</code></h3>
+          <p>실험 자동화와 공용 파라미터 관리의 중심이다.</p>
+          <div class="actions">
+            <a class="btn" href="../src/runtime_params.py">params loader 열기</a>
+            <a class="btn" href="../config/runtime_params.json">runtime_params.json 열기</a>
+            <a class="btn" href="../src/reporting/runtime_experiment_report.py">experiment report 열기</a>
+            <a class="btn" href="../src/reporting/performance_log_report.py">performance log 열기</a>
+          </div>
+        </article>
+      </div>
+
+      <div class="callout">
+        <strong>추천 사용법</strong><br />
+        먼저 <code>파일 열기</code> 버튼으로 원본 전체를 보고, 그 다음 <code>핵심 코드 펼쳐보기</code>로 이 페이지 안에서 중요한 줄만 빠르게 훑는 방식이 가장 편하다.
+      </div>
+    </section>
+
+    <section class="section" id="variables">
+      <h2>5. Must-Know Variables and Data Structures</h2>
+      <p class="section-intro">
+        아래 변수와 구조체 이름은 회의, 디버깅, 발표에서 계속 나오게 된다. 이름과 의미를 같이 묶어서 기억하는 것이 좋다.
+      </p>
+      <table class="pipeline-table">
+        <thead>
+          <tr>
+            <th>Category</th>
+            <th>Key Names</th>
+            <th>What They Change</th>
+            <th>When To Check</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>Sensor Pose</td>
+            <td><code>sensor_yaw_deg</code>, <code>sensor_pitch_deg</code>, <code>sensor_height_m</code></td>
+            <td>설치 방향/기울기/높이를 world 좌표로 보정한다.</td>
+            <td>앞뒤로 걸었는데 대각선처럼 보일 때</td>
+          </tr>
+          <tr>
+            <td>Filter Gate</td>
+            <td><code>snr_threshold</code>, <code>max_range</code>, <code>filter_x/y/z_*</code></td>
+            <td>사람 point가 살아남는 범위를 정한다.</td>
+            <td><code>removed_range</code>, <code>removed_axis_roi</code>가 클 때</td>
+          </tr>
+          <tr>
+            <td>Keepout / Clutter</td>
+            <td><code>near_front_*</code>, <code>right_rail_*</code>, <code>static_v_min</code>, <code>static_max_snr</code></td>
+            <td>front clutter, rail clutter, static clutter를 줄인다.</td>
+            <td>레일 주변 잡점이 많을 때</td>
+          </tr>
+          <tr>
+            <td>DBSCAN</td>
+            <td><code>dbscan_eps</code>, <code>dbscan_min_samples</code>, <code>use_velocity_feature</code>, <code>dbscan_velocity_weight</code></td>
+            <td>사람을 몇 개 cluster로 볼지에 가장 직접적으로 영향을 준다.</td>
+            <td>사람이 2~3 track으로 나뉠 때</td>
+          </tr>
+          <tr>
+            <td>Tracker</td>
+            <td><code>association_gate</code>, <code>max_misses</code>, <code>min_hits</code>, <code>report_miss_tolerance</code></td>
+            <td>track continuity, ghost track, 깜빡임을 조절한다.</td>
+            <td>zero-track streak나 ID switch가 클 때</td>
+          </tr>
+          <tr>
+            <td>Control</td>
+            <td><code>control_belt_axis_x/y</code>, <code>approach_speed_threshold</code>, <code>stationary_speed_threshold</code>, <code>static_hold_sec</code></td>
+            <td>belt 방향 기준 속도/정지 판정을 안정화한다.</td>
+            <td>STOP/SLOW/RESUME가 채터링할 때</td>
+          </tr>
+          <tr>
+            <td>Viewer</td>
+            <td><code>max_vis_fps</code>, <code>point_persistence_frames</code>, <code>track_history_sec</code>, <code>velocity_arrow_scale</code></td>
+            <td>시각적 잔상, trail, 체감 부하를 바꾼다.</td>
+            <td>화면이 늦거나 너무 복잡해 보일 때</td>
+          </tr>
+          <tr>
+            <td>Health Metrics</td>
+            <td><code>parse_failures</code>, <code>resync_events</code>, <code>dropped_frames_estimate</code></td>
+            <td>UART/parser 안정성을 본다.</td>
+            <td>point가 중간중간 사라질 때</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <table class="pipeline-table" style="margin-top: 18px;">
+        <thead>
+          <tr>
+            <th>Structure</th>
+            <th>Produced By</th>
+            <th>Main Fields</th>
+            <th>Why It Matters</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>ParsedFrame</code></td>
+            <td>parser</td>
+            <td><code>frame_number</code>, <code>num_obj</code>, <code>points</code>, <code>parser_latency_ms</code></td>
+            <td>raw frame의 기본 단위다.</td>
+          </tr>
+          <tr>
+            <td><code>FilterStats</code></td>
+            <td>preprocess</td>
+            <td><code>filter_ratio</code>, <code>removed_*</code>, <code>sample_points</code></td>
+            <td>“왜 안 잡혔는가”를 가장 잘 설명한다.</td>
+          </tr>
+          <tr>
+            <td><code>RuntimeFrameProcessingResult</code></td>
+            <td>runtime core</td>
+            <td><code>filtered_points</code>, <code>clusters</code>, <code>tracks</code>, <code>primary_track</code></td>
+            <td>runtime이 계산한 1-frame 결과 묶음이다.</td>
+          </tr>
+          <tr>
+            <td><code>RuntimeFrameHookPayload</code></td>
+            <td>runtime core</td>
+            <td><code>frame</code>, <code>processing_result</code>, <code>reader_stats</code>, <code>pipeline_latency_ms</code></td>
+            <td>viewer가 runtime 결과를 그대로 받는 연결점이다.</td>
+          </tr>
+          <tr>
+            <td><code>ViewerFrameSnapshot</code></td>
+            <td>viewer</td>
+            <td><code>raw_points</code>, <code>filtered_points</code>, <code>clusters</code>, <code>tracks</code>, <code>removed_*</code></td>
+            <td>실제로 그리는 데이터 형식이다.</td>
+          </tr>
+          <tr>
+            <td><code>TrackOutput</code></td>
+            <td>tracker</td>
+            <td><code>track_id</code>, <code>x</code>, <code>y</code>, <code>vx</code>, <code>vy</code>, <code>confidence</code></td>
+            <td>viewer/control/logging 모두가 자주 보는 object 상태다.</td>
+          </tr>
+          <tr>
+            <td><code>ControlDecision</code></td>
+            <td>control</td>
+            <td><code>command</code>, <code>speed_ratio</code>, <code>primary_event</code>, <code>belt_speed_mps</code></td>
+            <td>실제 belt 제어 출력 단위다.</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section class="section" id="handoff">
+      <h2>6. What Moves To The Next Stage</h2>
+      <p class="section-intro">
+        각 단계에서 다음 단계로 무엇이 넘어가는지를 보면, 어느 지점에서 문제가 생겼는지 더 빨리 잡을 수 있다.
+      </p>
+      <table class="pipeline-table">
+        <thead>
+          <tr>
+            <th>Stage</th>
+            <th>Main File</th>
+            <th>Incoming Info</th>
+            <th>Outgoing Info</th>
+            <th>Why It Matters</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>UART Reader</td>
+            <td><code>runtime_pipeline.py</code></td>
+            <td>CLI/Data serial byte stream</td>
+            <td>buffered packet candidate</td>
+            <td>여기서 막히면 parse fail, resync, dropped가 증가한다.</td>
+          </tr>
+          <tr>
+            <td>TLV Parse</td>
+            <td><code>tlv_packet_parser.py</code></td>
+            <td>packet bytes</td>
+            <td><code>ParsedFrame</code>, arrays of <code>x/y/z/v/range/snr/noise</code></td>
+            <td>raw point가 맞아야 이후 모든 단계가 의미가 있다.</td>
+          </tr>
+          <tr>
+            <td>World Transform</td>
+            <td><code>runtime_pipeline.py</code></td>
+            <td>sensor-frame points + yaw/pitch/height</td>
+            <td>world-frame points + <code>ground_range</code></td>
+            <td>설치 각도가 있으면 여기서 앞뒤/좌우/높이 왜곡을 바로잡아야 한다.</td>
+          </tr>
+          <tr>
+            <td>Preprocess</td>
+            <td><code>noise_filter.py</code></td>
+            <td>world-frame points</td>
+            <td>filtered points + <code>FilterStats</code></td>
+            <td>사람이 왜 안 잡혔는지 range/ROI/keepout 원인을 여기서 본다.</td>
+          </tr>
+          <tr>
+            <td>DBSCAN</td>
+            <td><code>dbscan_cluster.py</code></td>
+            <td>filtered points</td>
+            <td>cluster list</td>
+            <td>사람 1명이 여러 덩어리로 나뉘는 문제는 주로 여기서 시작된다.</td>
+          </tr>
+          <tr>
+            <td>Kalman Tracker</td>
+            <td><code>kalman_tracker.py</code></td>
+            <td>cluster centroids</td>
+            <td>track list</td>
+            <td>association이 약하면 ID switch, zero-track, multi-track가 커진다.</td>
+          </tr>
+          <tr>
+            <td>Control</td>
+            <td><code>proximity_speed_control.py</code></td>
+            <td>tracks or clusters</td>
+            <td><code>ControlDecision</code></td>
+            <td>belt axis 기준 속도/변위 판단으로 제어 안정성을 만든다.</td>
+          </tr>
+          <tr>
+            <td>Viewer</td>
+            <td><code>live_rail_viewer.py</code></td>
+            <td>latest runtime snapshot</td>
+            <td>3D + top-down 화면</td>
+            <td>runtime과 같은 결과를 최대한 늦지 않게 보여주는 것이 목표다.</td>
+          </tr>
+          <tr>
+            <td>Reports</td>
+            <td><code>runtime_experiment_report.py</code>, <code>performance_log_report.py</code></td>
+            <td>summary CSV + frame CSV</td>
+            <td>experiment report + performance log</td>
+            <td>실험의 원인/수정/변화를 문서로 남긴다.</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section class="section" id="issues">
+      <h2>7. Current Problems</h2>
+      <p class="section-intro">
+        지금 남아 있는 핵심 문제는 한 가지가 아니라, 좌표계·필터·클러스터링·연속성 문제가 겹친 상태다.
+      </p>
+      <div class="grid-2">
+        <article class="card issue">
+          <span class="tag warn">Issue 1</span>
+          <h3>대각선처럼 보이는 이동</h3>
+          <ul class="clean">
+            <li><strong>원인 1:</strong> 설치 yaw/pitch/height와 world 좌표계가 정확히 맞지 않으면 앞뒤 이동이 x/y/z에 섞인다.</li>
+            <li><strong>원인 2:</strong> 사람이 여러 track으로 분할되면 viewer에서는 대각선/지그재그처럼 더 과장돼 보인다.</li>
+            <li><strong>원인 3:</strong> range/ROI로 몸 일부만 살아남으면 centroid가 좌우로 흔들린다.</li>
+          </ul>
+        </article>
+        <article class="card issue">
+          <span class="tag warn">Issue 2</span>
+          <h3>사람 1명이 여러 track으로 보임</h3>
+          <ul class="clean">
+            <li>mmWave point cloud가 원래 성기고, 몸 좌/우/팔 반사가 따로 뜬다.</li>
+            <li>DBSCAN 파라미터가 보수적이면 같은 사람 안의 빈 공간을 못 메운다.</li>
+            <li>tracker가 greedy nearest-first라 cluster가 둘 이상 뜨면 track도 둘 이상 유지되기 쉽다.</li>
+          </ul>
+        </article>
+        <article class="card issue">
+          <span class="tag warn">Issue 3</span>
+          <h3>Zero-Track 긴 구간</h3>
+          <ul class="clean">
+            <li>range gate나 ROI가 멀어진 구간에서 사람 점군을 자른다.</li>
+            <li>cluster가 한번 안 생기면 tracker miss가 연속으로 누적된다.</li>
+            <li>현재 화면엔 최신 상태만 보여주므로 실제 미검출 streak가 그대로 드러난다.</li>
+          </ul>
+        </article>
+        <article class="card issue">
+          <span class="tag warn">Issue 4</span>
+          <h3>Parser / UART 연속성</h3>
+          <ul class="clean">
+            <li>magic-word resync와 dropped frame은 줄었지만 완전히 사라지진 않았다.</li>
+            <li>viewer draw stall보다 parser가 더 나쁘면 UART continuity가 근본 병목이다.</li>
+            <li>runner-only run과 viewer run을 분리해서 봐야 원인을 정확히 나눌 수 있다.</li>
+          </ul>
+        </article>
+      </div>
+    </section>
+
+    <section class="section" id="next">
+      <h2>8. What To Solve Next</h2>
+      <p class="section-intro">
+        문제별로 손대야 할 위치가 다르다. 아래 순서대로 가는 것이 지금 구조에서는 가장 효율적이다.
+      </p>
+      <div class="grid-2">
+        <article class="card solution">
+          <span class="tag">Priority 1</span>
+          <h3>Range Gate를 Ground-Centric하게 바꾸기</h3>
+          <ul class="clean">
+            <li>현재 point는 world frame으로 보정되지만 filter의 range 판단은 여전히 기존 <code>range</code> 의존이 크다.</li>
+            <li><code>ground_range = hypot(x, y)</code>를 filter의 선택적 기준으로 도입하면 상부 설치에서 더 직관적인 gate가 된다.</li>
+            <li>앞뒤 데모라면 <code>max_range</code>보다 <code>y ROI + ground_range</code> 조합이 더 맞다.</li>
+          </ul>
+        </article>
+        <article class="card solution">
+          <span class="tag">Priority 2</span>
+          <h3>사람 분할 줄이기</h3>
+          <ul class="clean">
+            <li>near-range band의 <code>eps</code>를 키우거나 <code>use_velocity_feature</code>를 실험한다.</li>
+            <li>서로 가까운 cluster를 post-merge하는 후처리를 넣는다.</li>
+            <li>viewer에는 primary track 우선 표시를 넣어 시각적 분할도 줄일 수 있다.</li>
+          </ul>
+        </article>
+        <article class="card solution">
+          <span class="tag">Priority 3</span>
+          <h3>Zero-Track 완화</h3>
+          <ul class="clean">
+            <li><code>report_miss_tolerance</code>를 올려 화면 깜빡임을 줄인다.</li>
+            <li><code>max_misses</code>를 조금 늘려 short gap을 버티게 한다.</li>
+            <li>다만 miss를 너무 키우면 ghost track가 늘 수 있으므로 experiment report로 같이 봐야 한다.</li>
+          </ul>
+        </article>
+        <article class="card solution">
+          <span class="tag">Priority 4</span>
+          <h3>UART Continuity 더 줄이기</h3>
+          <ul class="clean">
+            <li>현재 viewer는 read/process와 draw를 분리했으므로 다음 기준점은 runner-only run이다.</li>
+            <li>runner에서도 resync가 계속 크면 reader 정책, packet batch 처리, serial timeout 조정이 다음 대상이다.</li>
+            <li>이건 frame CSV보다 <code>parse_fail / resync / dropped</code> 변화로 보는 것이 맞다.</li>
+          </ul>
+        </article>
+      </div>
+      <div class="callout">
+        <strong>현재 가장 합리적인 다음 단계</strong><br />
+        <code>ground_range</code> 기반 range gate 도입 → near-range cluster merge 또는 velocity feature 실험 → tracker visibility 완화 → runner-only 기준 UART continuity 재측정
+      </div>
+    </section>
+
+    <section class="section" id="logging">
+      <h2>9. Does Auto Recording Slow The System?</h2>
+      <p class="section-intro">
+        자동 기록은 종류마다 부담이 다르다. 전부 같은 비용이 아니고, 특히 <code>debug</code>와는 성격이 다르다.
+      </p>
+      <div class="grid-3">
+        <article class="card">
+          <span class="tag blue">Low / End Of Run</span>
+          <h3>Experiment Report / Performance Log</h3>
+          <p>이 둘은 run이 끝난 뒤 <code>run_summary.csv</code>와 frame CSV를 읽어서 생성된다. 실시간 frame loop에서 매번 돌지 않는다.</p>
+          <p><strong>결론:</strong> 시연 중 딜레이 원인으로 보기는 어렵다.</p>
+        </article>
+        <article class="card">
+          <span class="tag">Medium</span>
+          <h3>CSV / Text Log Flush</h3>
+          <p>frame CSV와 특히 text log는 per-frame 또는 per-line flush가 있어 부담이 있다. 이건 실제 runtime loop 비용에 영향을 줄 수 있다.</p>
+          <p><strong>대응:</strong> <code>--disable-text-log</code>, 필요시 <code>--disable-file-log</code>.</p>
+        </article>
+        <article class="card">
+          <span class="tag warn">High</span>
+          <h3>Debug Output</h3>
+          <p><code>--debug</code>는 parser 내부 상태를 콘솔에 많이 뿌려서 훨씬 무겁다. 자동 report와는 비교 대상이 아니다.</p>
+          <p><strong>결론:</strong> debug는 진단용, 시연용이 아니다.</p>
+        </article>
+      </div>
+      <div class="callout">
+        <strong>실전 해석</strong><br />
+        자동 experiment report와 performance log는 종료 시 생성이라 실시간 영향이 작다.
+        시연 중 체감 지연을 만드는 건 대체로 <em>text log flush</em>, <em>viewer draw</em>, <em>UART continuity</em> 쪽이다.
+        그래서 viewer는 기본적으로 file log를 끄고, runner-only 비교 run에서는 <code>--disable-text-log --disable-overview-png</code>를 먼저 쓰는 것이 맞다.
+      </div>
+    </section>
+
+    <section class="section" id="commands">
+      <h2>10. Recommended Commands</h2>
+      <div class="grid-2">
+        <article class="card">
+          <h3>시연용 Viewer</h3>
+          <div class="cmd">python src/visualization/live_rail_viewer.py --cli-port COM11 --data-port COM10 --config config/profile_3d.cfg --max-vis-fps 5</div>
+        </article>
+        <article class="card">
+          <h3>설치값 포함 Viewer</h3>
+          <div class="cmd">python src/visualization/live_rail_viewer.py --cli-port COM11 --data-port COM10 --config config/profile_3d.cfg --sensor-yaw-deg 20 --sensor-pitch-deg 30 --sensor-height-m 1.74 --max-vis-fps 5</div>
+        </article>
+        <article class="card">
+          <h3>Parser-Only 비교 Run</h3>
+          <div class="cmd">python src/parser/tlv_parse_runner.py --cli-port COM11 --data-port COM10 --config config/profile_3d.cfg --duration 60 --disable-text-log --disable-overview-png</div>
+        </article>
+        <article class="card">
+          <h3>Experiment Metadata 포함 Run</h3>
+          <div class="cmd">python src/parser/tlv_parse_runner.py --cli-port COM11 --data-port COM10 --config config/profile_3d.cfg --duration 60 --disable-text-log --disable-overview-png --experiment-title "front back walk with pitch correction" --experiment-problem "viewer에서 대각선 이동처럼 보이고 추적이 자주 끊김" --experiment-hypothesis "pitch/height 미보정과 parser continuity가 동시에 영향" --experiment-change "sensor_pitch_deg=30, sensor_height_m=1.74 적용 후 parser-only 비교" --experiment-next-step "viewer 실시간 run에서 yaw/pitch 보정과 draw 분리 효과 재확인"</div>
+        </article>
+      </div>
+    </section>
+
+    <p class="footer-note">
+      Related docs:
+      <a href="./runtime_storyboard.html">runtime_storyboard.html</a>,
+      <a href="./doxygen/html/runtime_portal.html">runtime_portal.html</a>,
+      <a href="./runtime_code_browser.html">runtime_code_browser.html</a>,
+      <a href="./performance_log.md">performance_log.md</a>,
+      <a href="./experiment_journal.md">experiment_journal.md</a>,
+      <a href="./experiment_reports/README.md">experiment_reports/README.md</a>,
+      <a href="../README.md">project README</a>
+    </p>
+  </div>
+</body>
+</html>

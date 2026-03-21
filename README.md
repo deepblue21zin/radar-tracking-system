@@ -88,21 +88,28 @@ python src/parser/tlv_parse_runner.py --cli-port COM11 --data-port COM10 --confi
 summary CSV와 FPS 로그를 비교할 때 추천하는 명령이다.
 
 ```bash
-python src/parser/tlv_parse_runner.py --cli-port COM11 --data-port COM10 --config config/profile_3d.cfg --duration 60 --scenario baseline --roi-tag full_frame
+python src/parser/tlv_parse_runner.py --cli-port COM11 --data-port COM10 --config config/profile_3d.cfg --duration 60 --scenario baseline --roi-tag full_frame --disable-near-front-keepout --disable-right-rail-keepout --disable-static-clutter-filter
 ```
 
-### 4.3 좌표 preview를 함께 보고 싶을 때
+### 4.3 parser-only 비교 run
+viewer 없이 parser/runtime 안정성만 보고 싶을 때 쓴다. text log flush와 overview PNG 생성을 꺼서 비교 run을 가볍게 만든다.
+
+```bash
+python src/parser/tlv_parse_runner.py --cli-port COM11 --data-port COM10 --config config/profile_3d.cfg --duration 60 --disable-text-log --disable-overview-png
+```
+
+### 4.4 좌표 preview를 함께 보고 싶을 때
 filtered point, cluster, track 좌표 일부를 콘솔과 frame CSV에 같이 남긴다.
 
 ```bash
-python src/parser/tlv_parse_runner.py --cli-port COM11 --data-port COM10 --config config/profile_3d.cfg --coord-preview-count 3 --coord-preview-every 10
+python src/parser/tlv_parse_runner.py --cli-port COM11 --data-port COM10 --config config/profile_3d.cfg --duration 40 --coord-preview-count 3 --coord-preview-every 10
 ```
 
 의미:
 - `--coord-preview-count 3`: 첫 3개 좌표만 출력
 - `--coord-preview-every 10`: 10프레임마다 한 번만 출력
 
-### 4.4 파라미터를 한 곳에서 반복 튜닝할 때
+### 4.5 파라미터를 한 곳에서 반복 튜닝할 때
 반복적으로 바꾸는 값은 `config/runtime_params.json`에서 관리하는 것이 가장 편하다.
 
 추천 흐름:
@@ -115,40 +122,43 @@ python src/parser/tlv_parse_runner.py --cli-port COM11 --data-port COM10 --confi
 python src/parser/tlv_parse_runner.py --cli-port COM11 --data-port COM10 --config config/profile_3d.cfg --dbscan-eps 0.55 --association-gate 1.2
 ```
 
-### 4.5 파서 debug를 보고 싶을 때
+### 4.6 파서 debug를 보고 싶을 때
 header 값과 parser 내부 상태를 확인할 때 쓴다.
 
 ```bash
 python src/parser/tlv_parse_runner.py --cli-port COM11 --data-port COM10 --config config/profile_3d.cfg --debug --duration 30
 ```
 
-### 4.6 3D 시각화로 보고 싶을 때
+### 4.7 3D 시각화로 보고 싶을 때
 오른쪽 rail이 있는 3D 디버그 viewer를 실행한다.
-현재 viewer는 단일 프레임 점만 찍는 대신, 최근 filtered point를 누적한 `motion cloud`, track `trail`, velocity `arrow`를 함께 보여줘서 사람이 어느 방향으로 움직이고 있는지 읽기 쉽게 했다.
-또한 raw/filter/cluster/track 계산은 이제 `src/parser/runtime_pipeline.py`의 공용 처리 함수(`build_runtime_processing_context()`, `process_runtime_frame()`)를 그대로 사용하므로, runtime 쪽 필터/DBSCAN/트래커 변경이 viewer와 어긋나지 않는다.
 
 ```bash
 python src/visualization/live_rail_viewer.py --cli-port COM11 --data-port COM10 --config config/profile_3d.cfg
 ```
 
-사람 움직임이 약하게 보이면:
-- `--max-range 8.0`처럼 range gate를 먼저 완화
-- `--point-persistence-frames`를 늘려 motion cloud를 더 길게 유지
-- `--track-history-sec`를 늘려 이동 궤적을 더 길게 표시
-- 축이 돌아가 보이면 `--sensor-yaw-deg`로 평면 회전을 보정
-- 화면 녹화 중 프레임 누락이 많으면 `--max-vis-fps 5`처럼 시각화 FPS를 낮춰서 본다
+시연용으로는 draw 부담을 줄이기 위해 이 명령을 먼저 추천한다.
 
-예:
 ```bash
-python src/visualization/live_rail_viewer.py --cli-port COM11 --data-port COM10 --config config/profile_3d.cfg --max-range 8.0 --point-persistence-frames 8 --track-history-sec 3.0 --sensor-yaw-deg 90 --max-vis-fps 5
+python src/visualization/live_rail_viewer.py --cli-port COM11 --data-port COM10 --config config/profile_3d.cfg --max-vis-fps 5
 ```
+
+설치값을 CLI에서 직접 덮어쓰고 싶으면:
+
+```bash
+python src/visualization/live_rail_viewer.py --cli-port COM11 --data-port COM10 --config config/profile_3d.cfg --sensor-yaw-deg 20 --sensor-pitch-deg 30 --sensor-height-m 1.74 --max-vis-fps 5
+```
+
+설치가 천장/상부 브래킷처럼 높고 아래로 기울어진 경우:
+- `config/runtime_params.json`의 `sensor.sensor_pitch_deg`, `sensor.sensor_height_m`를 실제 설치값으로 맞춘다.
+- 현재 기본 params 파일은 예시로 `sensor_yaw_deg=20`, `sensor_pitch_deg=30`, `sensor_height_m=1.74`를 사용한다.
+- world 좌표 보정은 runtime/viewer 공용 처리 경로에 적용되므로, viewer와 runner가 같은 좌표계를 본다.
 
 문제가 생기면:
 - 예외가 `docs/error/YYYY-MM-DD.md`에 자동 기록된다.
 - direct script 실행과 module import 경로를 모두 고려한 fallback import가 들어 있다.
 - ghost track가 많이 남으면 `--report-miss-tolerance 0` 또는 `--max-misses 3` 쪽을 먼저 확인한다.
 
-### 4.7 실행 시 확인 포인트
+### 4.8 실행 시 확인 포인트
 - 시작 직후 `[CFG] << Done` 응답이 정상적으로 이어지는지 확인
 - 프레임 로그가 `frame=... gap=... packet=... raw=... filtered=... clusters=... tracks=...` 형태로 이어지는지 확인
 - `send_config()` 이후 data port input buffer가 한 번 비워진 뒤 읽기가 시작되는지 확인
@@ -172,8 +182,19 @@ frame=123 gap=0 packet=2848B raw=87 filtered=51 clusters=3 tracks=2 parser_ms=2.
 - `--config`: mmWave cfg 파일 경로
 - `--duration`: 실행 시간(초), 미지정 시 무한 실행
 - `--debug`: 파서 디버그 출력
+- `--sensor-yaw-deg`
+- `--sensor-pitch-deg`
+- `--sensor-height-m`
 - `--coord-preview-count`
 - `--coord-preview-every`
+- `--disable-file-log`: frame CSV / text log / summary / overview PNG를 모두 끔
+- `--disable-text-log`: frame `.log` 텍스트 로그만 끔
+- `--disable-overview-png`: 종료 후 자동 생성되는 overview PNG만 끔
+- `--experiment-title`
+- `--experiment-problem`
+- `--experiment-hypothesis`
+- `--experiment-change`
+- `--experiment-next-step`
 
 전처리:
 - `--snr-threshold`
@@ -212,8 +233,7 @@ frame=123 gap=0 packet=2848B raw=87 filtered=51 clusters=3 tracks=2 parser_ms=2.
 
 시각화:
 - `src/visualization/live_rail_viewer.py`도 `--params-file`을 지원한다.
-- viewer는 공용 filter/clustering 기본값과 함께 시야 범위(`x/y/z`), `--max-vis-fps`, motion cloud/trail 관련 파라미터를 읽는다.
-- viewer의 frame 처리도 `src/parser/runtime_pipeline.py` 공용 경로를 사용한다.
+- viewer는 공용 filter/clustering 기본값과 함께 시야 범위(`x/y/z`) 및 `--max-vis-fps`를 읽는다.
 
 ## 6. 데이터 계약
 파서 출력(`ParsedFrame`):
@@ -248,8 +268,20 @@ frame=123 gap=0 packet=2848B raw=87 filtered=51 clusters=3 tracks=2 parser_ms=2.
 측정 및 기록:
 - 런타임 FPS 로그: 표준 출력
 - 프레임 CSV/텍스트 로그: `evidence/runtime_logs/`
-- CSV 프레임 로그가 생성되면 같은 이름의 overview PNG(`frames_YYYYMMDD_HHMMSS_overview.png`)도 자동 생성
 - 실험 결과 기록: `docs/performance_log.md`
+  - `run_summary.csv`와 frame CSV를 기준으로 자동 생성된다.
+  - 최신 run, 이전 run 대비 증감, continuity/분할/제거 원인이 함께 정리된다.
+- run별 구조화 리포트: `docs/experiment_reports/`
+- 문제/가설/수정 흐름 요약: `docs/experiment_journal.md`
+- 전체 구조/데이터 흐름/현재 문제를 한 페이지로 보는 HTML: `docs/runtime_system_onepage.html`
+- 스토리보드형 전체 설명/시뮬레이션 HTML: `docs/runtime_storyboard.html`
+- Doxygen 스타일 코드/실험 포털: `docs/doxygen/html/runtime_portal.html`
+- 전체 코드를 좌측 파일 목록으로 읽는 HTML 브라우저: `docs/runtime_code_browser.html`
+
+시연/저부하 실행 팁:
+- `live_rail_viewer.py`는 runtime 결과를 그대로 받되, read/process와 draw를 분리해 최신 상태만 그리도록 구성되어 있다.
+- `live_rail_viewer.py`는 이미 `disable_file_log=True`, `console_output=False`로 runtime loop에 붙으므로 시연 중 frame CSV/text log를 남기지 않는다.
+- `tlv_parse_runner.py`로 parser-only 안정성을 볼 때는 `--disable-text-log --disable-overview-png`를 먼저 켜서 flush 부담을 줄일 수 있다.
 
 ## 8. 트러블슈팅
 1. `ModuleNotFoundError: sklearn` 또는 `filterpy`
@@ -283,6 +315,10 @@ frame=123 gap=0 packet=2848B raw=87 filtered=51 clusters=3 tracks=2 parser_ms=2.
 - 과거 장애/수정 로그는 `docs/error/`, `docs/correction report/`에 날짜 기준으로 남긴다.
 
 ## 10. 관련 문서
+- 원페이지 시스템 개요 HTML: `docs/runtime_system_onepage.html`
+- 스토리보드형 전체 설명 HTML: `docs/runtime_storyboard.html`
+- Doxygen 스타일 런타임 포털: `docs/doxygen/html/runtime_portal.html`
+- 전체 코드 브라우저 HTML: `docs/runtime_code_browser.html`
 - 아키텍처: `docs/architecture.md`
 - Doxygen 개요: `docs/doxygen_overview.md`
 - 캡스톤 구현 명세: `docs/capstone_pipeline_spec.md`
@@ -290,7 +326,9 @@ frame=123 gap=0 packet=2848B raw=87 filtered=51 clusters=3 tracks=2 parser_ms=2.
 - TLV 스터디 노트: `docs/study/study_TLV.md`
 - 런타임/제어 스터디 노트: `docs/study/study_runtime_pipeline_and_control.md`
 - 런타임 이슈/튜닝 계획: `docs/elevation/runtime_issue_fix_plan.md`
+- 실험 과정 저널: `docs/experiment_journal.md`
 - 시각화 진척 보드: `docs/elevation/visualization.md`
 - 런타임 로깅/ROI 계획: `docs/runtime_logging_roi_plan.md`
 - 에러 로그: `docs/error/`
 - 수정 이력 리포트: `docs/correction report/`
+- 자동 생성 run 리포트: `docs/experiment_reports/`
