@@ -133,6 +133,8 @@ RUNNER_PARAM_DEFAULT_KEYS = (
     "max_misses",
     "min_hits",
     "report_miss_tolerance",
+    "lost_gate_factor",
+    "tentative_gate_factor",
     "control_enabled",
     "control_zone_x_min",
     "control_zone_x_max",
@@ -774,10 +776,12 @@ def run_realtime(
     use_velocity_feature: bool = False,
     dbscan_velocity_weight: float = 0.25,
     dbscan_adaptive_eps_bands: object = None,
-    association_gate: float = 1.5,
+    association_gate: float = 5.99,
     max_misses: int = 8,
     min_hits: int = 2,
-    report_miss_tolerance: int = 1,
+    report_miss_tolerance: int = 2,
+    lost_gate_factor: float = 1.2,
+    tentative_gate_factor: float = 0.5,
     control_enabled: bool = False,
     control_zone_x_min: Optional[float] = None,
     control_zone_x_max: Optional[float] = None,
@@ -961,6 +965,8 @@ def run_realtime(
             max_misses=max_misses,
             min_hits=min_hits,
             report_miss_tolerance=report_miss_tolerance,
+            lost_gate_factor=lost_gate_factor,
+            tentative_gate_factor=tentative_gate_factor,
         )
     except ImportError as exc:
         emit_log(f"[WARN] Kalman tracker disabled: {exc}")
@@ -1431,10 +1437,27 @@ def build_arg_parser(defaults: Dict[str, object]) -> argparse.ArgumentParser:
         ),
     )
 
-    parser.add_argument("--association-gate", type=float, default=defaults["association_gate"])
+    parser.add_argument(
+        "--association-gate",
+        type=float,
+        default=defaults["association_gate"],
+        help="Association gate as Mahalanobis dist_sq (5.99 ~= chi-square 95% in 2D).",
+    )
     parser.add_argument("--max-misses", type=int, default=defaults["max_misses"])
     parser.add_argument("--min-hits", type=int, default=defaults["min_hits"])
     parser.add_argument("--report-miss-tolerance", type=int, default=defaults["report_miss_tolerance"])
+    parser.add_argument(
+        "--lost-gate-factor",
+        type=float,
+        default=defaults["lost_gate_factor"],
+        help="Gate multiplier for confirmed/lost track reacquire attempts.",
+    )
+    parser.add_argument(
+        "--tentative-gate-factor",
+        type=float,
+        default=defaults["tentative_gate_factor"],
+        help="Gate multiplier for tentative tracks; lower values suppress spurious births.",
+    )
     parser.add_argument("--control-enabled", action="store_true", default=defaults["control_enabled"])
     parser.add_argument("--control-zone-x-min", type=float, default=defaults["control_zone_x_min"])
     parser.add_argument("--control-zone-x-max", type=float, default=defaults["control_zone_x_max"])
@@ -1540,6 +1563,8 @@ def main() -> None:
             max_misses=args.max_misses,
             min_hits=args.min_hits,
             report_miss_tolerance=args.report_miss_tolerance,
+            lost_gate_factor=args.lost_gate_factor,
+            tentative_gate_factor=args.tentative_gate_factor,
             control_enabled=args.control_enabled,
             control_zone_x_min=args.control_zone_x_min,
             control_zone_x_max=args.control_zone_x_max,
