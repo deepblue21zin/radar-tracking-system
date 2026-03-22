@@ -23,20 +23,16 @@ except ImportError as exc:
 
 try:
     from ..cluster.dbscan_cluster import normalize_adaptive_eps_bands
-    from ..parser.runtime_pipeline import (
-        RuntimeFrameHookPayload,
-        run_realtime,
-    )
+    from ..parser.runtime_pipeline import run_realtime
+    from ..runtime.models import RuntimeFrameHookPayload
     from ..runtime_params import GLOBAL_RUNTIME_PARAM_DEFAULTS, resolve_runtime_param_defaults
 except ImportError:
     project_root = Path(__file__).resolve().parents[2]
     if str(project_root) not in sys.path:
         sys.path.insert(0, str(project_root))
     from src.cluster.dbscan_cluster import normalize_adaptive_eps_bands
-    from src.parser.runtime_pipeline import (
-        RuntimeFrameHookPayload,
-        run_realtime,
-    )
+    from src.parser.runtime_pipeline import run_realtime
+    from src.runtime.models import RuntimeFrameHookPayload
     from src.runtime_params import GLOBAL_RUNTIME_PARAM_DEFAULTS, resolve_runtime_param_defaults
 
 
