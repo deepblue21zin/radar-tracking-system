@@ -57,7 +57,7 @@ class MultiObjectKalmanTracker:
         association_gate: float = 1.5,
         max_misses: int = 8,
         min_hits: int = 2,
-        report_miss_tolerance: int = 0,
+        report_miss_tolerance: int = 1,
     ):
         KalmanFilter, Q_discrete_white_noise = _load_filterpy()
         self._KalmanFilter = KalmanFilter
