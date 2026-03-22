@@ -56,7 +56,7 @@ GLOBAL_RUNTIME_PARAM_DEFAULTS: Dict[str, Any] = {
     "association_gate": 1.5,
     "max_misses": 8,
     "min_hits": 2,
-    "report_miss_tolerance": 0,
+    "report_miss_tolerance": 1,
     "control_enabled": False,
     "control_zone_x_min": None,
     "control_zone_x_max": None,

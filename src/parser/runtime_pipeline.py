@@ -777,7 +777,7 @@ def run_realtime(
     association_gate: float = 1.5,
     max_misses: int = 8,
     min_hits: int = 2,
-    report_miss_tolerance: int = 0,
+    report_miss_tolerance: int = 1,
     control_enabled: bool = False,
     control_zone_x_min: Optional[float] = None,
     control_zone_x_max: Optional[float] = None,
