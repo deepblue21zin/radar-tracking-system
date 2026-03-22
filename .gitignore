@@ -211,3 +211,6 @@ evidence/runtime_logs/
 
 # Doxygen generated documentation
 docs/doxygen/
+
+# Local temporary inspection artifacts
+tmp/
