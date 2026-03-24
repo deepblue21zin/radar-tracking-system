@@ -23,20 +23,16 @@ except ImportError as exc:
 
 try:
     from ..cluster.dbscan_cluster import normalize_adaptive_eps_bands
-    from ..parser.runtime_pipeline import (
-        RuntimeFrameHookPayload,
-        run_realtime,
-    )
+    from ..parser.runtime_pipeline import run_realtime
+    from ..runtime.models import RuntimeFrameHookPayload
     from ..runtime_params import GLOBAL_RUNTIME_PARAM_DEFAULTS, resolve_runtime_param_defaults
 except ImportError:
     project_root = Path(__file__).resolve().parents[2]
     if str(project_root) not in sys.path:
         sys.path.insert(0, str(project_root))
     from src.cluster.dbscan_cluster import normalize_adaptive_eps_bands
-    from src.parser.runtime_pipeline import (
-        RuntimeFrameHookPayload,
-        run_realtime,
-    )
+    from src.parser.runtime_pipeline import run_realtime
+    from src.runtime.models import RuntimeFrameHookPayload
     from src.runtime_params import GLOBAL_RUNTIME_PARAM_DEFAULTS, resolve_runtime_param_defaults
 
 
@@ -82,6 +78,8 @@ VIEWER_PARAM_DEFAULT_KEYS = (
     "max_misses",
     "min_hits",
     "report_miss_tolerance",
+    "lost_gate_factor",
+    "tentative_gate_factor",
     "x_min",
     "x_max",
     "y_min",
@@ -268,7 +266,12 @@ def build_arg_parser(defaults: dict) -> argparse.ArgumentParser:
         default=defaults["dbscan_adaptive_eps_bands"],
         help="Adaptive DBSCAN range bands in JSON or 'r_min:r_max:eps[:min_samples],...' format",
     )
-    parser.add_argument("--association-gate", type=float, default=defaults["association_gate"], help="Tracker association gate in meters")
+    parser.add_argument(
+        "--association-gate",
+        type=float,
+        default=defaults["association_gate"],
+        help="Association gate as Mahalanobis dist_sq (5.99 ~= chi-square 95% in 2D).",
+    )
     parser.add_argument("--max-misses", type=int, default=defaults["max_misses"], help="Maximum consecutive misses before track deletion")
     parser.add_argument("--min-hits", type=int, default=defaults["min_hits"], help="Minimum hits before a track is reported")
     parser.add_argument(
@@ -276,6 +279,18 @@ def build_arg_parser(defaults: dict) -> argparse.ArgumentParser:
         type=int,
         default=defaults["report_miss_tolerance"],
         help="Only draw tracks whose miss count is at most this value",
+    )
+    parser.add_argument(
+        "--lost-gate-factor",
+        type=float,
+        default=defaults["lost_gate_factor"],
+        help="Gate multiplier for confirmed/lost track reacquire attempts",
+    )
+    parser.add_argument(
+        "--tentative-gate-factor",
+        type=float,
+        default=defaults["tentative_gate_factor"],
+        help="Gate multiplier for tentative track matching; lower means stricter birth filtering",
     )
 
     parser.add_argument("--x-min", type=float, default=defaults["x_min"], help="3D view minimum X")
@@ -825,6 +840,8 @@ def _runtime_worker(args: argparse.Namespace, frame_buffer: LatestRuntimeFrameBu
             max_misses=args.max_misses,
             min_hits=args.min_hits,
             report_miss_tolerance=args.report_miss_tolerance,
+            lost_gate_factor=args.lost_gate_factor,
+            tentative_gate_factor=args.tentative_gate_factor,
             scenario="live_viewer",
             disable_file_log=True,
             params_file=args.params_file,

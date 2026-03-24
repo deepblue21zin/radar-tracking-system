@@ -49,10 +49,12 @@
     ]
   },
   "tracking": {
-    "association_gate": 1.5,
+    "association_gate": 5.99,
     "max_misses": 8,
     "min_hits": 2,
-    "report_miss_tolerance": 0
+    "report_miss_tolerance": 2,
+    "lost_gate_factor": 1.2,
+    "tentative_gate_factor": 0.5
   },
   "control": {
     "control_enabled": false,

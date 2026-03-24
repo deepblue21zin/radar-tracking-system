@@ -3,6 +3,7 @@
 
 pyserial==3.5
 numpy==1.26.4
+scipy==1.13.1
 scikit-learn==1.5.2
 filterpy==1.4.5
 matplotlib==3.9.2
